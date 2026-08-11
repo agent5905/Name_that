@@ -1,0 +1,4 @@
+name = "name-that-team-member"
+pages_build_output_dir = "./dist"
+compatibility_date = "2025-08-01"
+
