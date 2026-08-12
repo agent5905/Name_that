@@ -6,6 +6,7 @@ import type {
   ParticipantSnapshot,
 } from '../domain/game';
 import type { AdminSession, CreatedRoom, GameDefinition, GameSummary, SessionCreationOperation } from '../domain/admin';
+import type { RevealKey } from './assetPreloader';
 
 export class ApiError extends Error {
   constructor(
@@ -87,10 +88,21 @@ export async function deleteGame(id: string, token: string): Promise<void> {
   await requestJson(`/api/games/${id}`, { method: 'DELETE', token });
 }
 
-export async function uploadGameMedia(id: string, token: string, file: File): Promise<{ id: string; mimeType: string; previewUrl: string }> {
+export interface UploadedGameMediaPair {
+  readonly id?: string;
+  readonly mysteryMediaAssetId?: string;
+  readonly revealMediaAssetId?: string;
+  readonly mysteryMimeType: string;
+  readonly revealMimeType: string;
+  readonly mysteryPreviewUrl: string;
+  readonly revealPreviewUrl: string;
+}
+
+export async function uploadGameMedia(id: string, token: string, mystery: File, reveal: File): Promise<UploadedGameMediaPair> {
   const form = new FormData();
-  form.set('file', file);
-  const payload = await requestJson<{ media: { id: string; mimeType: string; previewUrl: string } }>(`/api/games/${id}/media`, {
+  form.set('mystery', mystery);
+  form.set('reveal', reveal);
+  const payload = await requestJson<{ media: UploadedGameMediaPair }>(`/api/games/${id}/media`, {
     method: 'POST', token, body: form,
   });
   return payload.media;
@@ -142,6 +154,10 @@ export async function getHostRoom(code: string, token: string): Promise<{ host: 
   return requestJson(`/api/rooms/${code}/host`, { token });
 }
 
+export async function getRevealKey(code: string, choiceId: string): Promise<RevealKey> {
+  return requestJson(`/api/rooms/${code}/reveal-key/${choiceId}`);
+}
+
 export async function submitAnswer(code: string, token: string, playerId: string, choiceId: string) {
   return requestJson<{ answer: { accepted: boolean; idempotent: boolean; employeeId: string } }>(
     `/api/rooms/${code}/answers`,
@@ -153,6 +169,29 @@ export async function performHostAction(code: string, token: string, action: Hos
   return requestJson<{ snapshot: GameSnapshot }>(`/api/rooms/${code}/actions`, {
     method: 'POST', token, body: { action },
   });
+}
+
+export async function performDirectHostAction(code: string, token: string, action: HostAction): Promise<void> {
+  if (import.meta.env.DEV) return void (await performHostAction(code, token, action));
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return void (await performHostAction(code, token, action));
+  let response: Response;
+  try {
+    response = await fetch(`${url}/rest/v1/rpc/host_action_direct`, {
+      method: 'POST',
+      headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ p_code: code, p_host_token: token, p_action: action }),
+    });
+  } catch {
+    throw new ApiError('NETWORK_ERROR', 'We could not reach the game. Check your connection and try again.', 0);
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    const code = payload?.message && /^[A-Z_]+$/.test(payload.message) ? payload.message : 'REQUEST_FAILED';
+    throw new ApiError(code, code === 'HOST_UNAUTHORIZED' ? 'This host session is no longer authorized.' : 'The room could not advance.', response.status);
+  }
+  await response.body?.cancel();
 }
 
 export function errorMessage(error: unknown): string {

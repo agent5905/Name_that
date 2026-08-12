@@ -2,23 +2,28 @@ import { ApiError } from './api';
 
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const MAX_MULTIPART_BYTES = MAX_UPLOAD_BYTES + 128 * 1024;
+const MAX_MULTIPART_BYTES = MAX_UPLOAD_BYTES * 2 + 256 * 1024;
 const MAX_PIXELS = 2_000_000;
 
 export interface DecodedPng {
   readonly bytes: Uint8Array;
   readonly width: number;
   readonly height: number;
-  readonly rgba: Uint8Array;
   readonly mimeType: 'image/png';
   readonly extension: 'png';
 }
 
-function crc32(bytes: Uint8Array): number {
+const CRC_TABLE = new Uint32Array(256);
+for (let index = 0; index < CRC_TABLE.length; index += 1) {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) value = (value >>> 1) ^ (0xedb88320 & -(value & 1));
+  CRC_TABLE[index] = value >>> 0;
+}
+
+function crc32(parts: readonly Uint8Array[]): number {
   let crc = 0xffffffff;
-  for (const byte of bytes) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  for (const bytes of parts) {
+    for (const byte of bytes) crc = (crc >>> 8) ^ (CRC_TABLE[(crc ^ byte) & 0xff] ?? 0);
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
@@ -37,7 +42,7 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
   view.setUint32(0, data.byteLength);
   result.set(typeBytes, 4);
   result.set(data, 8);
-  view.setUint32(8 + data.byteLength, crc32(concat([typeBytes, data])));
+  view.setUint32(8 + data.byteLength, crc32([typeBytes, data]));
   return result;
 }
 
@@ -73,10 +78,10 @@ export async function boundedMultipart(request: Request): Promise<FormData> {
   return bounded.formData();
 }
 
-function paeth(a: number, b: number, c: number): number {
-  const p = a + b - c;
-  const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
-  return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+export async function encryptRevealWithKey(bytes:Uint8Array,keyValue:string,ivValue:string,aad:string):Promise<Uint8Array>{
+ const decode=(value:string)=>{const padded=value.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-value.length%4)%4);return Uint8Array.from(atob(padded),character=>character.charCodeAt(0));};
+ const key=await crypto.subtle.importKey('raw',decode(keyValue).slice().buffer,{name:'AES-GCM'},false,['encrypt']);
+ const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv:decode(ivValue).slice().buffer,additionalData:new TextEncoder().encode(aad)},key,bytes.slice().buffer);return new Uint8Array(encrypted);
 }
 
 export async function safeImage(value: FormDataEntryValue | null): Promise<DecodedPng> {
@@ -95,7 +100,7 @@ export async function safeImage(value: FormDataEntryValue | null): Promise<Decod
     const type = new TextDecoder().decode(typeBytes);
     const data = bytes.slice(offset + 8, offset + 8 + length);
     const expectedCrc = view.getUint32(offset + 8 + length);
-    if (crc32(concat([typeBytes, data])) !== expectedCrc) throw new ApiError(415, 'UNSAFE_IMAGE_TYPE', 'The image could not be decoded safely.');
+    if (crc32([typeBytes, data]) !== expectedCrc) throw new ApiError(415, 'UNSAFE_IMAGE_TYPE', 'The image could not be decoded safely.');
     if (!sawHeader) {
       if (type !== 'IHDR' || length !== 13) throw new ApiError(415, 'UNSAFE_IMAGE_TYPE', 'The image could not be decoded safely.');
       width = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0);
@@ -121,23 +126,17 @@ export async function safeImage(value: FormDataEntryValue | null): Promise<Decod
     throw new ApiError(415, 'UNSAFE_IMAGE_TYPE', 'The image could not be decoded safely.');
   }
   if (inflated.byteLength !== expectedInflated) throw new ApiError(415, 'UNSAFE_IMAGE_TYPE', 'The image could not be decoded safely.');
-  const rgba = new Uint8Array(rowBytes * height);
   for (let y = 0; y < height; y += 1) {
     const sourceStart = y * (rowBytes + 1);
     const filter = inflated[sourceStart] ?? 255;
     if (filter > 4) throw new ApiError(415, 'UNSAFE_IMAGE_TYPE', 'The image could not be decoded safely.');
-    const rowStart = y * rowBytes;
-    for (let x = 0; x < rowBytes; x += 1) {
-      const raw = inflated[sourceStart + 1 + x] ?? 0;
-      const left = x >= 4 ? rgba[rowStart + x - 4] ?? 0 : 0;
-      const up = y > 0 ? rgba[rowStart + x - rowBytes] ?? 0 : 0;
-      const upperLeft = y > 0 && x >= 4 ? rgba[rowStart + x - rowBytes - 4] ?? 0 : 0;
-      const reconstructed = filter === 0 ? raw : filter === 1 ? raw + left : filter === 2 ? raw + up :
-        filter === 3 ? raw + Math.floor((left + up) / 2) : raw + paeth(left, up, upperLeft);
-      rgba[rowStart + x] = reconstructed & 255;
-    }
   }
-  return { bytes: await encodePng(width, height, rgba), width, height, rgba, mimeType: 'image/png', extension: 'png' };
+  // The browser already emits normalized RGBA PNGs. Fully inflating the IDAT
+  // stream proves that the compressed payload is complete, bounded, and has a
+  // valid filter byte for every row. Preserve those verified source bytes;
+  // decoding every pixel and recompressing it here doubled peak memory and CPU
+  // and could exceed the Pages Worker limits on otherwise valid 5 MiB pairs.
+  return { bytes, width, height, mimeType: 'image/png', extension: 'png' };
 }
 
 export async function encodePng(width: number, height: number, rgba: Uint8Array): Promise<Uint8Array> {
@@ -149,20 +148,4 @@ export async function encodePng(width: number, height: number, rgba: Uint8Array)
   for (let y = 0; y < height; y += 1) raw.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), y * (width * 4 + 1) + 1);
   const compressed = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
   return concat([PNG_SIGNATURE, pngChunk('IHDR', ihdr), pngChunk('IDAT', compressed), pngChunk('IEND', new Uint8Array())]);
-}
-
-export async function generateSilhouette(source: DecodedPng): Promise<Uint8Array> {
-  // Never derive public pixels from the protected portrait. A recognizable
-  // reveal is impossible even for adversarial binary/transparent uploads.
-  void source;
-  const width = 180, height = 225;
-  const rgba = new Uint8Array(width * height * 4);
-  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
-    const head = ((x - 90) ** 2) / (42 ** 2) + ((y - 70) ** 2) / (46 ** 2) <= 1;
-    const shoulders = ((x - 90) ** 2) / (78 ** 2) + ((y - 205) ** 2) / (86 ** 2) <= 1;
-    const dark = head || shoulders;
-    const offset = (y * width + x) * 4;
-    rgba[offset] = dark ? 5 : 82; rgba[offset + 1] = dark ? 15 : 224; rgba[offset + 2] = dark ? 26 : 223; rgba[offset + 3] = 255;
-  }
-  return encodePng(width, height, rgba);
 }

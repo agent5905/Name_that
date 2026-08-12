@@ -10,8 +10,11 @@ export interface GameQuestionDefinition {
   readonly position?: number;
   readonly prompt: string;
   readonly revealName: string;
-  readonly mediaAssetId: string | null;
-  readonly mediaPreviewUrl?: string | null;
+  readonly funFact: string | null;
+  readonly mysteryMediaAssetId: string | null;
+  readonly revealMediaAssetId: string | null;
+  readonly mysteryMediaPreviewUrl?: string | null;
+  readonly revealMediaPreviewUrl?: string | null;
   readonly choices: readonly GameChoiceDefinition[];
 }
 

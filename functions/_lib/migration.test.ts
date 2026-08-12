@@ -16,9 +16,27 @@ const aggregateLimits = readFileSync(new URL('../../supabase/migrations/20260811
 const projectBudget = readFileSync(new URL('../../supabase/migrations/202608110007_project_daily_budget_and_cleanup.sql',import.meta.url),'utf8');
 const churnHardening = readFileSync(new URL('../../supabase/migrations/202608110008_game_churn_and_atomic_budget.sql',import.meta.url),'utf8');
 const atomicGameBudgets = readFileSync(new URL('../../supabase/migrations/202608110009_atomic_game_budgets.sql',import.meta.url),'utf8');
+const explicitMedia = readFileSync(new URL('../../supabase/migrations/202608110010_explicit_mystery_reveal_media.sql',import.meta.url),'utf8');
+const sessionCryptoSearchPath = readFileSync(new URL('../../supabase/migrations/202608110011_session_crypto_search_path.sql',import.meta.url),'utf8');
+const priorityPhaseBroadcast = readFileSync(new URL('../../supabase/migrations/202608110012_priority_phase_broadcast.sql',import.meta.url),'utf8');
+const authoritativePhasePush = readFileSync(new URL('../../supabase/migrations/202608110013_authoritative_phase_push.sql',import.meta.url),'utf8');
+const directHostPhaseAction = readFileSync(new URL('../../supabase/migrations/202608110014_direct_host_phase_action.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
+  it('exposes only the credential-checked host state machine for direct low-latency phase cues', () => {
+    expect(directHostPhaseAction).toContain('security definer');
+    expect(directHostPhaseAction).toContain("set search_path = ''");
+    expect(directHostPhaseAction).toContain('p_code is null or p_host_token is null or p_action is null');
+    expect(directHostPhaseAction).toContain("p_host_token !~ '^[A-Za-z0-9_-]{43}$'");
+    expect(directHostPhaseAction).toContain("p_action not in ('start','lock','reveal','show_results','next_round','end')");
+    expect(directHostPhaseAction).toContain("v_supplied := extensions.digest(p_host_token, 'sha256')");
+    expect(directHostPhaseAction).toContain('v_expected is distinct from v_supplied');
+    expect(directHostPhaseAction).toContain("return public.host_action(p_code, pg_catalog.encode(v_supplied, 'hex'), p_action)");
+    expect(directHostPhaseAction).toContain('revoke all on function public.host_action_direct(text,text,text) from public');
+    expect(directHostPhaseAction).toContain('grant execute on function public.host_action_direct(text,text,text) to anon, authenticated');
+    expect(applyScript).toContain("['202608110014', '../supabase/migrations/202608110014_direct_host_phase_action.sql']");
+  });
   it('computes totals independently and emits one aggregate row per choice', () => {
     expect(migration).toContain("'totalAnswers', (select count(*) from public.answers a where a.round_id = v_round.id)");
     expect(migration).toContain("from public.round_choices c\n      where c.round_id = v_round.id;");
@@ -164,8 +182,70 @@ describe('saved-game lifecycle migration guards',()=>{
     expect(applyScript.indexOf("['202608110006'")).toBeLessThan(applyScript.indexOf("['202608110007'"));
     expect(applyScript.indexOf("['202608110007'")).toBeLessThan(applyScript.indexOf("['202608110008'"));
     expect(applyScript.indexOf("['202608110008'")).toBeLessThan(applyScript.indexOf("['202608110009'"));
+    expect(applyScript.indexOf("['202608110009'")).toBeLessThan(applyScript.indexOf("['202608110010'"));
+    expect(applyScript.indexOf("['202608110010'")).toBeLessThan(applyScript.indexOf("['202608110011'"));
+    expect(applyScript.indexOf("['202608110011'")).toBeLessThan(applyScript.indexOf("['202608110012'"));
+    expect(applyScript.indexOf("['202608110012'")).toBeLessThan(applyScript.indexOf("['202608110013'"));
     expect(applyScript).toContain("values('202608110001') on conflict");
     expect(applyScript).not.toContain("values('202608110001'),('202608110002')");
+  });
+  it('labels trusted realtime invalidations with the authoritative phase',()=>{
+    expect(priorityPhaseBroadcast).toContain("'phase', v_phase");
+    expect(priorityPhaseBroadcast).toContain("'room_snapshot_changed'");
+    expect(priorityPhaseBroadcast).toMatch(/'room:' \|\| v_code,\s+true\s+\)/);
+    expect(priorityPhaseBroadcast).toContain('revoke all on function public.broadcast_room_snapshot_invalidation()');
+  });
+  it('pushes only the sanitized room projection and phase-gated per-session reveal material',()=>{
+    expect(authoritativePhasePush).toContain("'snapshot',v_snapshot");
+    expect(authoritativePhasePush).toContain("new.phase is distinct from old.phase");
+    expect(authoritativePhasePush).toContain("new.phase in ('employee_revealed','results_displayed','complete')");
+    expect(authoritativePhasePush).toContain("r.content_mode='saved'");
+    expect(authoritativePhasePush).toContain("'revealKey',v_key");
+    expect(authoritativePhasePush).not.toContain('storage_path');
+    expect(authoritativePhasePush).toMatch(/'room:'\|\|v_code,true/);
+    expect(authoritativePhasePush).toContain('revoke all on function public.broadcast_room_snapshot_invalidation()');
+  });
+  it('stores explicit image pairs and immutable fun facts without generating a mystery image',()=>{
+    expect(explicitMedia).toContain('mystery_media_asset_id uuid');expect(explicitMedia).toContain('reveal_media_asset_id uuid');expect(explicitMedia).toContain('add column fun_fact text');
+    expect(explicitMedia).toContain('mystery_media_path,reveal_media_path');expect(explicitMedia).toContain('q.fun_fact');expect(explicitMedia).not.toContain('generateSilhouette');
+  });
+  it('snapshots an encrypted reveal once and releases only the correct current key after reveal',()=>{
+    expect(explicitMedia).toContain('extensions.gen_random_bytes(32)');expect(explicitMedia).toContain('extensions.gen_random_bytes(12)');expect(explicitMedia).toContain("p_kind not in('mystery','reveal')");
+    expect(explicitMedia).toContain("r.phase not in('employee_revealed','results_displayed','complete')");expect(explicitMedia).toContain('correct is distinct from p_choice_id');
+    expect(explicitMedia).toContain("'kind','reveal-encrypted'");expect(explicitMedia).toContain("'&asset='||q.id");expect(explicitMedia).toContain('id=p_asset_id');
+  });
+  it('ships a forward repair for pgcrypto search paths and incomplete saved-session keys',()=>{
+    expect(sessionCryptoSearchPath.match(/create or replace function public\.(create_game_session|play_again_session)/g)).toHaveLength(2);
+    expect(sessionCryptoSearchPath.match(/extensions\.gen_random_bytes\(32\)/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(sessionCryptoSearchPath.match(/extensions\.gen_random_bytes\(12\)/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(sessionCryptoSearchPath).not.toMatch(/(?<!extensions\.)gen_random_bytes\(/);
+    expect(sessionCryptoSearchPath).toContain("r.content_mode='saved'");
+    expect(sessionCryptoSearchPath).toContain("reveal_aad='name-that:'||q.room_id||':'||q.id");
+    expect(sessionCryptoSearchPath).toContain("m.id=coalesce(x.mystery_media_asset_id,x.media_asset_id)");
+    expect(sessionCryptoSearchPath).toContain('revoke all on function public.create_game_session');
+    expect(sessionCryptoSearchPath).toContain('to service_role');
+  });
+  it('keeps legacy saved media hostable while omitting unavailable encrypted preload',()=>{
+    expect(explicitMedia).toContain('coalesce(mystery_storage_path,silhouette_storage_path)');expect(explicitMedia).toContain('coalesce(reveal_storage_path,storage_path)');
+    expect(explicitMedia).toContain('coalesce(mystery_storage_path,silhouette_storage_path)');
+  });
+  it('charges source bytes inside the pair registration transaction after hard quotas',()=>{
+    const register=explicitMedia.slice(explicitMedia.indexOf('function public.register_game_media_pair'),explicitMedia.indexOf('function public.complete_game_media_pair'));
+    expect(register.indexOf('PROJECT_MEDIA_CAPACITY_REACHED')).toBeLessThan(register.indexOf('reserve_media_source_bytes'));
+    expect(register.indexOf('reserve_media_source_bytes')).toBeLessThan(register.indexOf('reserve_project_media_bytes'));
+    expect(register).toContain('p_source_hash text');
+  });
+  it('copies every explicit media/key/fact field on create and replay and accounts all bytes',()=>{
+    expect(explicitMedia).toContain('total:=p_mystery_bytes+p_reveal_bytes');expect(explicitMedia.match(/mystery_media_path,reveal_media_path,mystery_media_mime_type,reveal_media_mime_type,reveal_key,reveal_iv,reveal_aad,fun_fact/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(explicitMedia).toContain('q.question_id');expect(explicitMedia).not.toContain('select x.*,m.*');
+  });
+  it('widens both atomic byte reservations only to the maximum canonical pair plus GCM tag',()=>{
+    expect(explicitMedia.match(/p_byte_size not between 1 and 10485760/g)).toHaveLength(2);
+    expect(explicitMedia).toContain("pg_advisory_xact_lock(hashtextextended('game-media-project-daily-budget',0))");
+    expect(explicitMedia).toContain('reserved_bytes=reserved_bytes+p_byte_size');
+  });
+  it('keeps garbage collection scoped to the two stored source images',()=>{
+    expect(explicitMedia).not.toContain('encrypted_reveal_storage_path');expect(explicitMedia).toContain('q.media_path=m.storage_path');
   });
   it('authenticates and bounds image processing while recovering quota after stale saves',()=>{
     expect(hardening).toContain('create table public.media_upload_limits');

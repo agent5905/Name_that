@@ -20,40 +20,41 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const host = await context.newPage();
 let room;
-let authUserId;
 try {
-  await host.goto(new URL('/host', baseUrl).href);
-  await host.getByRole('button', { name: /Create a new game/ }).click();
-  await host.waitForURL(/\/host\/[A-HJ-NP-Z2-9]{5}$/);
-  const code = host.url().split('/').at(-1);
-  assert.match(code, /^[A-HJ-NP-Z2-9]{5}$/);
-  room = await host.evaluate(() => JSON.parse(localStorage.getItem('name-that:host')));
-  assert.equal(room.code, code);
-  await host.waitForFunction(() => Object.keys(localStorage).some((key) => key.startsWith('sb-') && key.endsWith('-auth-token')));
-  authUserId = await host.evaluate(() => {
-    for (const key of Object.keys(localStorage)) {
-      if (!key.startsWith('sb-') || !key.endsWith('-auth-token')) continue;
-      const session = JSON.parse(localStorage.getItem(key));
-      if (session?.user?.id) return session.user.id;
-    }
-    return undefined;
+  const createdResponse = await fetch(new URL('/api/rooms', baseUrl), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
   });
+  assert.equal(createdResponse.status, 201, 'The smoke room must be created.');
+  const created = await createdResponse.json();
+  room = {
+    roomId: created.room.roomId,
+    code: created.room.code,
+    token: created.hostToken,
+  };
+  await host.addInitScript((session) => {
+    localStorage.setItem('name-that:host', JSON.stringify(session));
+  }, room);
+  await host.goto(new URL(`/host/${room.code}`, baseUrl).href);
+  const code = room.code;
+  assert.match(code, /^[A-HJ-NP-Z2-9]{5}$/);
+  await host.getByRole('button', { name: /Start round/ }).waitFor();
 
   const participant = await context.newPage();
   await participant.goto(new URL(`/join/${code}`, baseUrl).href);
-  await participant.getByLabel('Your display name').fill('Production Smoke Player');
-  await participant.getByRole('button', { name: /Enter game/ }).click();
+  await participant.getByLabel('Display name').fill('Production Smoke Player');
+  await participant.getByRole('button', { name: /ready/ }).click();
   await participant.waitForURL(new RegExp(`/play/${code}$`));
   await participant.getByRole('heading', { name: /Welcome, Production Smoke Player/ }).waitFor();
 
   await host.getByRole('button', { name: /Start round/ }).click();
-  await participant.getByRole('heading', { name: 'Who is this team member?' }).waitFor({ timeout: 15_000 });
+  await participant.locator('.participant-question').waitFor({ timeout: 15_000 });
   await participant.locator('.choice').first().click();
-  await participant.getByText(/Your answer can’t be changed/).waitFor();
+  await participant.locator('.submitted-banner').waitFor();
 
   await host.getByRole('button', { name: /Lock answers/ }).click();
-  await participant.getByRole('heading', { name: /You picked|Time’s up/ }).waitFor({ timeout: 15_000 });
-  host.once('dialog', (dialog) => dialog.accept());
+  await participant.locator('.participant-wait.locked').waitFor({ timeout: 15_000 });
   await host.getByRole('button', { name: /Reveal teammate/ }).click();
   const portrait = participant.getByRole('img', { name: /Portrait of/ });
   await portrait.waitFor({ timeout: 15_000 });
@@ -84,12 +85,5 @@ try {
     const snapshotCleanup = await admin.from('room_snapshots').delete().eq('room_code', room.code);
     const roomCleanup = await admin.from('rooms').delete().eq('id', room.roomId);
     if (snapshotCleanup.error || roomCleanup.error) process.exitCode = 1;
-  }
-  if (authUserId) {
-    const user = await admin.auth.admin.getUserById(authUserId);
-    if (user.data.user?.user_metadata?.application === 'name-that-realtime') {
-      const deleted = await admin.auth.admin.deleteUser(authUserId);
-      if (deleted.error) process.exitCode = 1;
-    }
   }
 }

@@ -22,6 +22,8 @@ export interface RevealedEmployee {
   readonly team: string | null;
   readonly funFact: string | null;
   readonly mediaAvailable: boolean;
+  readonly mediaKey?: string | null;
+  readonly revealKey?: import('../lib/assetPreloader').RevealKey | null;
 }
 
 export interface ChoiceResult {
@@ -49,7 +51,9 @@ export interface GameSnapshot {
   readonly results: GameResults | null;
   readonly updatedAt: string;
   readonly prompt?: string;
+  readonly mysteryImageUrl?: string | null;
   readonly silhouetteUrl?: string | null;
+  readonly preloadAssets?: readonly import('../lib/assetPreloader').PreloadAsset[];
 }
 
 export interface Participant {

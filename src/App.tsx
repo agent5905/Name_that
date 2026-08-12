@@ -5,12 +5,13 @@ import type { Choice, GamePhase, GameSnapshot, HostAction } from './domain/game'
 import { phaseLabels } from './domain/game';
 import { useRoomSnapshot } from './hooks/useRoomSnapshot';
 import {
-  ApiError, createAdminSession, createGame, createGameRoom, deleteGame, errorMessage, getGame, getHostRoom,
-  joinRoom, listGames, loadGameMediaBlob, performHostAction, playAgain, submitAnswer, updateGame, uploadGameMedia,
+  ApiError, createAdminSession, createGame, createGameRoom, deleteGame, errorMessage, getGame, getHostRoom, getRevealKey,
+  joinRoom, listGames, loadGameMediaBlob, performDirectHostAction, playAgain, submitAnswer, updateGame, uploadGameMedia,
 } from './lib/api';
 import { adminSession, hostSession, participantSession, type HostSession, type ParticipantSession } from './lib/session';
 import { newSessionOperation } from './lib/sessionOperation';
-import { createSilhouette, normalizeUpload } from './lib/silhouette';
+import { preloadAssets, preloadedImageObjectUrl, releaseRoomAssets, revealObjectUrl, type PreloadAsset } from './lib/assetPreloader';
+import { normalizeUpload } from './lib/imageUpload';
 
 const CODE_PATTERN = /^[A-HJ-NP-Z2-9]{5}$/;
 const choiceMarks = 'ABCDEFGHIJ'.split('');
@@ -26,18 +27,26 @@ function navigate(path: string) {
 
 function usePath() {
   const [path, setPath] = useState(location.pathname);
+  const [, setNavigationRevision] = useState(0);
   useEffect(() => {
-    const update = () => setPath(location.pathname);
+    // A successful join can navigate from /play/:code to that same URL. React
+    // otherwise bails out of the equal path update and leaves the join form
+    // mounted even though the participant credential was just persisted.
+    const update = () => {
+      setPath(location.pathname);
+      setNavigationRevision((revision) => revision + 1);
+    };
     window.addEventListener('popstate', update);
     return () => window.removeEventListener('popstate', update);
   }, []);
   return path;
 }
 
-function Brand({ compact = false }: { compact?: boolean }) {
+function Brand({ compact = false, inert = false }: { compact?: boolean; inert?: boolean }) {
+  const content = <><span className="brand__aperture" aria-hidden="true"><i /></span><span><b>Name That</b><strong>Team Member</strong></span></>;
+  if (inert) return <div aria-label="Name That Team Member" className={`brand brand--inert ${compact ? 'brand--compact' : ''}`}>{content}</div>;
   return <a aria-label="Name That Team Member" className={`brand ${compact ? 'brand--compact' : ''}`} href="/" onClick={(event) => { event.preventDefault(); navigate('/'); }}>
-    <span className="brand__aperture" aria-hidden="true"><i /></span>
-    <span><b>Name That</b><strong>Team Member</strong></span>
+    {content}
   </a>;
 }
 
@@ -60,6 +69,35 @@ function PortraitChamber({ src, revealed = false, name = 'Mystery teammate', com
     <span className="chamber-corner chamber-corner--b" aria-hidden="true" />
     {!revealed && <strong className="mystery-mark" aria-hidden="true">?</strong>}
   </div>;
+}
+
+function RoomRevealPortrait({ code, reveal, assets, compact = false }: { code: string; reveal: NonNullable<GameSnapshot['revealedEmployee']>; assets: readonly PreloadAsset[] | undefined; compact?: boolean }) {
+  const [preloadedUrl, setPreloadedUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(!reveal.mediaKey);
+  useEffect(() => {
+    if (!reveal.mediaKey) { setPreloadedUrl(null); setFailed(true); return; }
+    let cancelled = false;
+    setFailed(false);
+    const asset = assets?.find((candidate) => candidate.key === reveal.mediaKey && candidate.kind === 'reveal-encrypted');
+    const key = reveal.revealKey ? Promise.resolve(reveal.revealKey) : getRevealKey(code, reveal.id);
+    void key.then((material) => revealObjectUrl(reveal.mediaKey!, material, asset)).then((url) => { if (!cancelled) { setPreloadedUrl(url); setFailed(!url); } }).catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [assets, code, reveal.id, reveal.mediaKey, reveal.revealKey]);
+  return <PortraitChamber src={preloadedUrl ?? (failed && reveal.mediaAvailable ? `/api/rooms/${code}/media/${reveal.id}` : null)} revealed name={reveal.displayName} compact={compact} />;
+}
+
+function useMysteryImage(roundIndex: number | null, assets: readonly PreloadAsset[] | undefined, fallback: string | null | undefined) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const asset = assets?.find((candidate) => candidate.kind === 'mystery' && candidate.roundIndex === roundIndex);
+  useEffect(() => {
+    if (!asset) { setUrl(null); setFailed(false); return; }
+    let cancelled = false;
+    setFailed(false);
+    void preloadedImageObjectUrl(asset).then((next) => { if (!cancelled) { setUrl(next); setFailed(!next); } });
+    return () => { cancelled = true; };
+  }, [asset]);
+  return asset ? url ?? (failed ? fallback ?? null : null) : fallback ?? null;
 }
 
 function Home() {
@@ -87,7 +125,7 @@ function Home() {
 }
 
 function GameEnded({ code }: { code: string }) {
-  return <main className="join-page show-surface game-ended"><Brand /><div className="angle-panel finale-card"><span className="finale-burst">★</span><p className="eyebrow">Room {code}</p><h1>This game has ended.</h1><p>The final teammate has already been revealed. Ask your host for the new room code.</p><a className="button button--light" href="/">Enter another code <span>→</span></a></div></main>;
+  return <main className="join-page show-surface game-ended"><Brand inert /><div className="angle-panel finale-card"><span className="finale-burst">★</span><p className="eyebrow">Room {code}</p><h1>This game has ended.</h1><p>The final teammate has already been revealed. Ask your host for the new room code.</p></div></main>;
 }
 
 function Join({ code }: { code: string }) {
@@ -114,7 +152,7 @@ function Join({ code }: { code: string }) {
 
   if (ended) return <GameEnded code={code} />;
   return <main className="join-page show-surface">
-    <header className="site-header"><Brand compact /><span className="room-chip">Room <strong>{code}</strong></span></header>
+    <header className="site-header"><Brand compact inert /><span className="room-chip">Room <strong>{code}</strong></span></header>
     <section className="join-layout">
       <div className="join-poster"><p className="eyebrow">You found the studio</p><h1>Step into the mystery.</h1><PortraitChamber compact /></div>
       <form className="name-console angle-panel" onSubmit={(event) => { void handleJoin(event); }}>
@@ -131,7 +169,7 @@ function Join({ code }: { code: string }) {
 
 function RoundHeader({ snapshot, name }: { snapshot: GameSnapshot; name?: string }) {
   const round = snapshot.roundIndex === null ? 0 : snapshot.roundIndex + 1;
-  return <header className="game-header"><Brand compact /><div>{name && <span className="player-chip">{name}</span>}<span className="round-chip">Round <strong>{round}</strong> / {snapshot.roundCount}</span></div></header>;
+  return <header className="game-header"><Brand compact inert /><div>{name && <span className="player-chip">{name}</span>}<span className="round-chip">Round <strong>{round}</strong> / {snapshot.roundCount}</span></div></header>;
 }
 
 function Results({ snapshot, large = false }: { snapshot: GameSnapshot; large?: boolean }) {
@@ -154,11 +192,30 @@ function Results({ snapshot, large = false }: { snapshot: GameSnapshot; large?: 
 function ParticipantGame({ code, session }: { code: string; session: ParticipantSession }) {
   const auth = useMemo(() => ({ token: session.token, playerId: session.playerId }), [session.playerId, session.token]);
   const room = useRoomSnapshot(code, auth);
+  useEffect(() => () => releaseRoomAssets(code), [code]);
   const [selected, setSelected] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [preloadedRevealUrl, setPreloadedRevealUrl] = useState<string | null>(null);
+  const [revealPreloadFailed, setRevealPreloadFailed] = useState(false);
   const answerId = room.participantState?.answerEmployeeId ?? selected;
   useEffect(() => { if (room.snapshot?.phase === 'question_open' && !room.participantState?.answerEmployeeId) setSelected(null); }, [room.snapshot?.roundIndex, room.snapshot?.phase, room.participantState?.answerEmployeeId]);
+  useEffect(() => { preloadAssets(room.snapshot?.preloadAssets); }, [room.snapshot?.preloadAssets]);
+  useEffect(() => {
+    const revealed = room.snapshot?.revealedEmployee;
+    const revealPhase = ['employee_revealed', 'results_displayed'].includes(room.snapshot?.phase ?? '');
+    if (!revealPhase) { setPreloadedRevealUrl(null); setRevealPreloadFailed(false); return; }
+    if (!revealed?.mediaKey) { setPreloadedRevealUrl(null); setRevealPreloadFailed(true); return; }
+    let cancelled = false;
+    setRevealPreloadFailed(false);
+    const key = revealed.revealKey ? Promise.resolve(revealed.revealKey) : getRevealKey(code, revealed.id);
+    void key
+      .then((key) => revealObjectUrl(revealed.mediaKey!, key, room.snapshot?.preloadAssets?.find((asset) => asset.key === revealed.mediaKey && asset.kind === 'reveal-encrypted')))
+      .then((url) => { if (!cancelled) { setPreloadedRevealUrl(url); setRevealPreloadFailed(!url); } })
+      .catch(() => { if (!cancelled) { setPreloadedRevealUrl(null); setRevealPreloadFailed(true); } });
+    return () => { cancelled = true; };
+  }, [code, room.snapshot?.phase, room.snapshot?.preloadAssets, room.snapshot?.revealedEmployee]);
+  const mysterySrc = useMysteryImage(room.snapshot?.roundIndex ?? null, room.snapshot?.preloadAssets, room.snapshot?.mysteryImageUrl ?? room.snapshot?.silhouetteUrl);
 
   async function choose(choice: Choice) {
     if (answerId || room.snapshot?.phase !== 'question_open' || submitting) return;
@@ -169,17 +226,17 @@ function ParticipantGame({ code, session }: { code: string; session: Participant
   }
 
   if (room.loading && !room.snapshot) return <main className="participant-shell"><Spinner /></main>;
-  if (!room.snapshot) return <main className="participant-shell error-page"><Brand compact /><h1>We lost the room.</h1><Notice tone="error">{room.error ?? 'This game is not available.'}</Notice><button className="button button--light" onClick={() => { void room.refetch(); }}>Try again</button></main>;
+  if (!room.snapshot) return <main className="participant-shell error-page"><Brand compact inert /><h1>We lost the room.</h1><Notice tone="error">{room.error ?? 'This game is not available.'}</Notice><button className="button button--light" onClick={() => { void room.refetch(); }}>Try again</button></main>;
   const snapshot = room.snapshot;
   const reveal = snapshot.revealedEmployee;
   const chosenName = snapshot.choices.find((choice) => choice.id === answerId)?.displayName;
-  const revealSrc = reveal?.mediaAvailable ? `/api/rooms/${code}/media/${reveal.id}` : null;
+  const revealSrc = preloadedRevealUrl ?? (revealPreloadFailed && reveal?.mediaAvailable ? `/api/rooms/${code}/media/${reveal.id}` : null);
   return <main className={`participant-shell phase-${snapshot.phase}`}>
     <RoundHeader snapshot={snapshot} name={session.displayName} />
     {(room.offline || room.error) && <div className="connection-banner" role="status">{room.offline ? 'You’re offline — reconnecting automatically.' : 'Connection interrupted. Retrying…'}</div>}
     <section className="participant-stage" aria-live="polite">
       {snapshot.phase === 'lobby' && <div className="participant-wait"><span className="status-orbit">✓</span><p className="eyebrow">You’re on the guest list</p><h1>Welcome, {session.displayName}.</h1><p>The host is getting the first mystery ready.</p><div className="waiting-meter"><i /><i /><i /><i /></div></div>}
-      {snapshot.phase === 'question_open' && <div className="participant-question"><header><PortraitChamber src={snapshot.silhouetteUrl} compact /><div><p className="eyebrow">Choose your suspect</p><h1>{snapshot.prompt ?? 'Who is this team member?'}</h1><span>{answerId ? 'Your answer is locked in.' : 'Tap one answer below.'}</span></div></header><div className="choice-grid">{snapshot.choices.map((choice, index) => <button key={choice.id} className={`choice ${answerId === choice.id ? 'is-selected' : ''} ${answerId && answerId !== choice.id ? 'is-muted' : ''}`} disabled={Boolean(answerId) || submitting} onClick={() => { void choose(choice); }}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span>{answerId === choice.id && <em>Locked</em>}</button>)}</div>{submitError && <Notice tone="error">{submitError}</Notice>}{answerId && <div className="submitted-banner"><strong>Locked in: {chosenName}</strong><span>Watch the shared screen for the reveal.</span></div>}</div>}
+      {snapshot.phase === 'question_open' && <div className="participant-question"><header><PortraitChamber src={mysterySrc} compact /><div><p className="eyebrow">Choose your suspect</p><h1>{snapshot.prompt ?? 'Who is this team member?'}</h1><span>{answerId ? 'Your answer is locked in.' : 'Tap one answer below.'}</span></div></header><div className="choice-grid">{snapshot.choices.map((choice, index) => <button key={choice.id} className={`choice ${answerId === choice.id ? 'is-selected' : ''} ${answerId && answerId !== choice.id ? 'is-muted' : ''}`} disabled={Boolean(answerId) || submitting} onClick={() => { void choose(choice); }}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span>{answerId === choice.id && <em>Locked</em>}</button>)}</div>{submitError && <Notice tone="error">{submitError}</Notice>}{answerId && <div className="submitted-banner"><strong>Locked in: {chosenName}</strong><span>Watch the shared screen for the reveal.</span></div>}</div>}
       {snapshot.phase === 'answers_locked' && <div className="participant-wait locked"><span className="lock-stamp">Locked in</span><h1>{chosenName ? `You picked ${chosenName}.` : 'Voting is closed.'}</h1><p>The spotlight is about to turn on.</p></div>}
       {(snapshot.phase === 'employee_revealed' || snapshot.phase === 'results_displayed') && reveal && <div className="participant-reveal"><p className="eyebrow">Mystery solved</p><PortraitChamber src={revealSrc} revealed name={reveal.displayName} /><h1>{reveal.displayName}</h1>{reveal.team && <p className="team-line">{reveal.team}</p>}{reveal.funFact && <blockquote>“{reveal.funFact}”</blockquote>}{snapshot.phase === 'results_displayed' && <Results snapshot={snapshot} />}</div>}
       {snapshot.phase === 'complete' && <div className="participant-wait finale"><span className="finale-burst">★</span><p className="eyebrow">Final curtain</p><h1>That’s the whole crew!</h1><p>Thanks for playing, {session.displayName}.</p></div>}
@@ -190,8 +247,7 @@ function ParticipantGame({ code, session }: { code: string; session: Participant
 
 function ParticipantRoute({ code }: { code: string }) {
   const session = participantSession.get(code);
-  useEffect(() => { if (!session) navigate(`/join/${code}`); }, [code, session]);
-  return session ? <ParticipantGame code={code} session={session} /> : <main className="participant-shell"><Spinner /></main>;
+  return session ? <ParticipantGame key={`${code}:${session.roomId}`} code={code} session={session} /> : <Join key={`missing:${code}`} code={code} />;
 }
 
 function useAdminIdentity() {
@@ -275,11 +331,17 @@ function GameLibrary() {
 }
 
 interface DraftChoice { clientId: string; id?: string; text: string; isCorrect: boolean }
-interface DraftQuestion { clientId: string; id?: string; prompt: string; revealName: string; mediaAssetId: string | null; mediaPreviewUrl?: string | null; previewObjectUrl?: string | null; silhouettePreviewUrl?: string | null; file?: File; silhouetteFile?: File; choices: DraftChoice[] }
+interface DraftQuestion {
+  clientId: string; id?: string; prompt: string; revealName: string; funFact: string;
+  mysteryMediaAssetId: string | null; revealMediaAssetId: string | null;
+  mysteryMediaPreviewUrl?: string | null; revealMediaPreviewUrl?: string | null;
+  mysteryPreviewObjectUrl?: string | null; revealPreviewObjectUrl?: string | null;
+  mysteryFile?: File; revealFile?: File; mediaDirty?: boolean; choices: DraftChoice[];
+}
 const uid = () => crypto.randomUUID();
-const newQuestion = (): DraftQuestion => ({ clientId: uid(), prompt: 'Who is this team member?', revealName: '', mediaAssetId: null, choices: [{ clientId: uid(), text: '', isCorrect: true }, { clientId: uid(), text: '', isCorrect: false }] });
-function toDraft(question: GameQuestionDefinition): DraftQuestion { return { ...question, clientId: uid(), choices: question.choices.map((choice) => ({ ...choice, clientId: uid() })) }; }
-function serializeQuestion(question: DraftQuestion): GameQuestionDefinition { return { ...(question.id ? { id: question.id } : {}), prompt: question.prompt.trim(), revealName: question.revealName.trim(), mediaAssetId: question.mediaAssetId, choices: question.choices.map((choice) => ({ ...(choice.id ? { id: choice.id } : {}), text: choice.text.trim(), isCorrect: choice.isCorrect })) }; }
+const newQuestion = (): DraftQuestion => ({ clientId: uid(), prompt: 'Who is this team member?', revealName: '', funFact: '', mysteryMediaAssetId: null, revealMediaAssetId: null, choices: [{ clientId: uid(), text: '', isCorrect: true }, { clientId: uid(), text: '', isCorrect: false }] });
+function toDraft(question: GameQuestionDefinition): DraftQuestion { return { ...question, funFact: question.funFact ?? '', clientId: uid(), choices: question.choices.map((choice) => ({ ...choice, clientId: uid() })) }; }
+function serializeQuestion(question: DraftQuestion): GameQuestionDefinition { return { ...(question.id ? { id: question.id } : {}), prompt: question.prompt.trim(), revealName: question.revealName.trim(), funFact: question.funFact.trim() || null, mysteryMediaAssetId: question.mysteryMediaAssetId, revealMediaAssetId: question.revealMediaAssetId, choices: question.choices.map((choice) => ({ ...(choice.id ? { id: choice.id } : {}), text: choice.text.trim(), isCorrect: choice.isCorrect })) }; }
 
 function GameEditor({ gameId }: { gameId?: string }) {
   const identity = useAdminIdentity();
@@ -306,13 +368,24 @@ function GameEditor({ gameId }: { gameId?: string }) {
         const game = await getGame(gameId, adminToken);
         const draft = game.questions.map(toDraft);
         await Promise.all(draft.map(async (question) => {
-          if (!question.mediaPreviewUrl) return;
-          try {
-            const blob = await loadGameMediaBlob(question.mediaPreviewUrl, adminToken);
-            question.previewObjectUrl = URL.createObjectURL(blob);
-            const source = new File([blob], 'saved-portrait', { type: blob.type || 'image/webp' });
-            question.silhouettePreviewUrl = URL.createObjectURL(await createSilhouette(source));
-          } catch { question.previewObjectUrl = null; question.silhouettePreviewUrl = null; }
+          await Promise.all([
+            (async () => {
+              if (!question.mysteryMediaPreviewUrl) return;
+              try {
+                const blob = await loadGameMediaBlob(question.mysteryMediaPreviewUrl, adminToken);
+                question.mysteryFile = new File([blob], 'saved-mystery', { type: blob.type || 'image/png' });
+                question.mysteryPreviewObjectUrl = URL.createObjectURL(blob);
+              } catch { question.mysteryPreviewObjectUrl = null; }
+            })(),
+            (async () => {
+              if (!question.revealMediaPreviewUrl) return;
+              try {
+                const blob = await loadGameMediaBlob(question.revealMediaPreviewUrl, adminToken);
+                question.revealFile = new File([blob], 'saved-reveal', { type: blob.type || 'image/png' });
+                question.revealPreviewObjectUrl = URL.createObjectURL(blob);
+              } catch { question.revealPreviewObjectUrl = null; }
+            })(),
+          ]);
         }));
         if (!cancelled) { setName(game.name); setRevision(game.revision); setQuestions(draft.length ? draft : [newQuestion()]); }
       } catch (reason) { if (!cancelled) setError(errorMessage(reason)); }
@@ -322,18 +395,19 @@ function GameEditor({ gameId }: { gameId?: string }) {
   }, [gameId, identity.admin]);
 
   function updateQuestion(index: number, update: (question: DraftQuestion) => DraftQuestion) { setQuestions((items) => items.map((question, i) => i === index ? update(question) : question)); }
-  async function selectImage(event: ChangeEvent<HTMLInputElement>) {
+  async function selectImage(kind: 'mystery' | 'reveal', event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; if (!file) return;
     if (!imageTypes.includes(file.type)) { setError('Use a JPG, PNG, or WebP image.'); event.target.value = ''; return; }
     if (file.size > MAX_IMAGE_BYTES) { setError('Images must be 5 MB or smaller.'); event.target.value = ''; return; }
-    setError(null); setSaveNote('Preparing silhouette preview…');
+    setError(null); setSaveNote(`Preparing ${kind} image preview…`);
     try {
       const normalizedFile = await normalizeUpload(file);
-      const silhouetteFile = await createSilhouette(normalizedFile);
       updateQuestion(active, (question) => {
-        if (question.previewObjectUrl?.startsWith('blob:')) URL.revokeObjectURL(question.previewObjectUrl);
-        if (question.silhouettePreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(question.silhouettePreviewUrl);
-        return { ...question, file: normalizedFile, silhouetteFile, previewObjectUrl: URL.createObjectURL(normalizedFile), silhouettePreviewUrl: URL.createObjectURL(silhouetteFile) };
+        const previous = kind === 'mystery' ? question.mysteryPreviewObjectUrl : question.revealPreviewObjectUrl;
+        if (previous?.startsWith('blob:')) URL.revokeObjectURL(previous);
+        return kind === 'mystery'
+          ? { ...question, mysteryFile: normalizedFile, mysteryPreviewObjectUrl: URL.createObjectURL(normalizedFile), mediaDirty: true }
+          : { ...question, revealFile: normalizedFile, revealPreviewObjectUrl: URL.createObjectURL(normalizedFile), mediaDirty: true };
       });
     } catch (reason) { setError(errorMessage(reason)); }
     finally { setSaveNote(null); }
@@ -352,7 +426,9 @@ function GameEditor({ gameId }: { gameId?: string }) {
     if (!name.trim()) return 'Give this game a name.';
     for (const [index, question] of questions.entries()) {
       if (!question.prompt.trim() || !question.revealName.trim()) return `Finish the prompt and reveal name for question ${index + 1}.`;
-      if (!question.mediaAssetId && !question.file) return `Add an employee image to question ${index + 1}.`;
+      if (!question.mysteryMediaAssetId && !question.mysteryFile) return `Add a Mystery Image to question ${index + 1}.`;
+      if (!question.revealMediaAssetId && !question.revealFile) return `Add a Reveal Image to question ${index + 1}.`;
+      if (question.funFact.length > 500) return `Shorten the Fun Fact for question ${index + 1} to 500 characters.`;
       if (question.choices.some((choice) => !choice.text.trim())) return `Finish every answer in question ${index + 1}.`;
       if (question.choices.filter((choice) => choice.isCorrect).length !== 1) return `Choose one correct answer for question ${index + 1}.`;
     }
@@ -370,16 +446,19 @@ function GameEditor({ gameId }: { gameId?: string }) {
       } else game = { id: currentId, name: name.trim(), revision, questions: questions.map(serializeQuestion) };
       const nextQuestions = [...questions];
       for (let index = 0; index < nextQuestions.length; index += 1) {
-        const question = nextQuestions[index]; if (!question?.file) continue;
-        if (!question.silhouetteFile) throw new Error(`Question ${index + 1} needs its silhouette regenerated. Replace the image and try again.`);
-        setSaveNote(`Uploading image ${index + 1} of ${questions.length}…`);
-        const media = await uploadGameMedia(game.id, identity.admin.token, question.file);
-        nextQuestions[index] = { ...question, mediaAssetId: media.id, mediaPreviewUrl: media.previewUrl };
+        const question = nextQuestions[index]; if (!question?.mediaDirty) continue;
+        if (!question.mysteryFile || !question.revealFile) throw new Error(`Question ${index + 1} needs both its Mystery Image and Reveal Image.`);
+        setSaveNote(`Uploading image pair ${index + 1} of ${questions.length}…`);
+        const media = await uploadGameMedia(game.id, identity.admin.token, question.mysteryFile, question.revealFile);
+        const mysteryMediaAssetId = media.mysteryMediaAssetId ?? media.id;
+        const revealMediaAssetId = media.revealMediaAssetId ?? media.id;
+        if (!mysteryMediaAssetId || !revealMediaAssetId) throw new Error('The image upload did not return both media references.');
+        nextQuestions[index] = { ...question, mysteryMediaAssetId, revealMediaAssetId, mysteryMediaPreviewUrl: media.mysteryPreviewUrl, revealMediaPreviewUrl: media.revealPreviewUrl, mediaDirty: false };
       }
       setSaveNote('Publishing your latest edits…');
       const saved = await updateGame(identity.admin.token, { id: game.id, name: name.trim(), revision: game.revision, questions: nextQuestions.map(serializeQuestion) });
       setRevision(saved.revision); setPublished(true); setCreatedDraftId(null);
-      setQuestions(saved.questions.map((savedQuestion, index) => ({ ...toDraft(savedQuestion), previewObjectUrl: nextQuestions[index]?.previewObjectUrl ?? null, silhouettePreviewUrl: nextQuestions[index]?.silhouettePreviewUrl ?? null })));
+      setQuestions(saved.questions.map((savedQuestion, index) => ({ ...toDraft(savedQuestion), ...(nextQuestions[index]?.mysteryFile ? { mysteryFile: nextQuestions[index].mysteryFile } : {}), ...(nextQuestions[index]?.revealFile ? { revealFile: nextQuestions[index].revealFile } : {}), mysteryPreviewObjectUrl: nextQuestions[index]?.mysteryPreviewObjectUrl ?? null, revealPreviewObjectUrl: nextQuestions[index]?.revealPreviewObjectUrl ?? null })));
       setSaveNote('Saved'); window.setTimeout(() => setSaveNote(null), 1600);
     } catch (reason) { setError(errorMessage(reason)); setSaveNote(null); }
     finally { setSaving(false); }
@@ -403,10 +482,14 @@ function GameEditor({ gameId }: { gameId?: string }) {
       <aside className="question-rail"><header><p className="eyebrow">Run of show</p><strong>{questions.length} question{questions.length === 1 ? '' : 's'}</strong></header>{questions.map((item, index) => <button className={index === active ? 'is-active' : ''} key={item.clientId} onClick={() => setActive(index)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.revealName || 'Untitled mystery'}</strong><small>{item.choices.length} answers</small></div></button>)}<button className="add-question" onClick={() => { setQuestions((items) => [...items, newQuestion()]); setActive(questions.length); }}>＋ Add question</button></aside>
       <section className="question-editor angle-panel"><header><div><p className="eyebrow">Question {active + 1}</p><h2>Build the mystery</h2></div><div className="reorder-controls"><button aria-label="Move question up" disabled={active === 0} onClick={() => moveQuestion(active, -1)}>↑</button><button aria-label="Move question down" disabled={active === questions.length - 1} onClick={() => moveQuestion(active, 1)}>↓</button><button className="danger" disabled={questions.length === 1} onClick={() => removeQuestion(active)}>Remove</button></div></header>
         <div className="field-grid"><label>Question prompt<input value={question.prompt} onChange={(event) => updateQuestion(active, (item) => ({ ...item, prompt: event.target.value }))} maxLength={160} /></label><label>Employee / reveal name<input value={question.revealName} onChange={(event) => updateQuestion(active, (item) => ({ ...item, revealName: event.target.value }))} maxLength={100} placeholder="Priya Shah" /></label></div>
-        <div className="image-upload"><div>{question.previewObjectUrl ? <img src={question.previewObjectUrl} alt="Employee preview" /> : <span>Portrait<br />preview</span>}</div><label><strong>{question.mediaAssetId || question.file ? 'Replace image' : 'Add employee image'}</strong><small>JPG, PNG, or WebP · up to 5 MB</small><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void selectImage(event); }} /></label></div>
+        <label className="fun-fact-field">Fun Fact (optional)<textarea value={question.funFact} onChange={(event) => updateQuestion(active, (item) => ({ ...item, funFact: event.target.value }))} maxLength={500} rows={3} placeholder="Has visited 17 countries." /><small>{question.funFact.length} / 500</small></label>
+        <div className="image-pair-editor">
+          <div className="image-upload"><div>{question.mysteryPreviewObjectUrl ? <img src={question.mysteryPreviewObjectUrl} alt="Mystery Image preview" /> : <span>Mystery<br />preview</span>}</div><label><strong>Mystery Image</strong><span>{question.mysteryMediaAssetId || question.mysteryFile ? 'Replace mystery image' : 'Add mystery image'}</span><small>Shown while players guess · JPG, PNG, or WebP · up to 5 MB</small><input aria-label="Mystery Image" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void selectImage('mystery', event); }} /></label></div>
+          <div className="image-upload"><div>{question.revealPreviewObjectUrl ? <img src={question.revealPreviewObjectUrl} alt="Reveal Image preview" /> : <span>Reveal<br />preview</span>}</div><label><strong>Reveal Image</strong><span>{question.revealMediaAssetId || question.revealFile ? 'Replace reveal image' : 'Add reveal image'}</span><small>Shown only after Reveal · JPG, PNG, or WebP · up to 5 MB</small><input aria-label="Reveal Image" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void selectImage('reveal', event); }} /></label></div>
+        </div>
         <div className="answers-editor"><header><div><h3>Answer choices</h3><p>Pick the radio button beside the correct answer.</p></div><button disabled={question.choices.length >= 10} onClick={addChoice}>＋ Add answer</button></header>{question.choices.map((choice, index) => <div className="answer-row" key={choice.clientId}><span>{choiceMarks[index]}</span><input type="radio" aria-label={`Mark answer ${index + 1} correct`} name={`correct-${question.clientId}`} checked={choice.isCorrect} onChange={() => updateQuestion(active, (item) => ({ ...item, choices: item.choices.map((entry, i) => ({ ...entry, isCorrect: i === index })) }))} /><input aria-label={`Answer ${index + 1}`} value={choice.text} onChange={(event) => updateQuestion(active, (item) => ({ ...item, choices: item.choices.map((entry, i) => i === index ? { ...entry, text: event.target.value } : entry) }))} maxLength={100} placeholder={index === 0 ? question.revealName || 'Correct name' : 'Another teammate'} /><button aria-label={`Remove answer ${index + 1}`} disabled={question.choices.length <= 2} onClick={() => removeChoice(index)}>×</button></div>)}</div>
       </section>
-      <aside className="preview-studio"><header><div><p className="eyebrow">Live preview</p><strong>{previewReveal ? 'Reveal' : 'Mystery'}</strong></div><div className="segmented"><button className={!previewReveal ? 'is-active' : ''} onClick={() => setPreviewReveal(false)}>Mystery</button><button className={previewReveal ? 'is-active' : ''} onClick={() => setPreviewReveal(true)}>Reveal</button></div></header><div className="preview-stage"><PortraitChamber src={previewReveal ? question.previewObjectUrl : question.silhouettePreviewUrl} revealed={previewReveal} name={question.revealName || 'Teammate'} /><p>{previewReveal ? 'Say hello to' : question.prompt || 'Who is this team member?'}</p><h3>{previewReveal ? question.revealName || 'Employee name' : 'Who could it be?'}</h3></div><p className="preview-help">The app creates a flattened two-tone silhouette derivative. The original stays private until reveal.</p></aside>
+      <aside className="preview-studio"><header><div><p className="eyebrow">Live preview</p><strong>{previewReveal ? 'Reveal' : 'Mystery'}</strong></div><div className="segmented"><button className={!previewReveal ? 'is-active' : ''} onClick={() => setPreviewReveal(false)}>Mystery</button><button className={previewReveal ? 'is-active' : ''} onClick={() => setPreviewReveal(true)}>Reveal</button></div></header><div className="preview-stage"><PortraitChamber src={previewReveal ? question.revealPreviewObjectUrl : question.mysteryPreviewObjectUrl} revealed={previewReveal} name={question.revealName || 'Teammate'} /><p>{previewReveal ? 'Say hello to' : question.prompt || 'Who is this team member?'}</p><h3>{previewReveal ? question.revealName || 'Employee name' : 'Who could it be?'}</h3>{previewReveal && question.funFact.trim() && <blockquote className="preview-fun-fact">{question.funFact.trim()}</blockquote>}</div><p className="preview-help">Mystery and Reveal images are separate. Players see the Mystery Image until the host reveals the teammate.</p></aside>
     </div>
   </main>;
 }
@@ -436,7 +519,7 @@ function HostDashboard({ session }: { session: HostSession }) {
   useEffect(() => { void verify(); }, [verify]);
   async function act(action: HostAction) {
     if (busy) return; setBusy(action); setError(null);
-    try { const response = await performHostAction(session.code, session.token, action); room.setSnapshot(response.snapshot); await verify(); }
+    try { await performDirectHostAction(session.code, session.token, action); await room.refetch(true, 'transition'); await verify(); }
     catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(null); }
   }
@@ -471,14 +554,17 @@ function HostRoute({ code }: { code: string }) {
 
 function Display({ code }: { code: string }) {
   const room = useRoomSnapshot(code);
+  useEffect(() => () => releaseRoomAssets(code), [code]);
+  useEffect(() => { preloadAssets(room.snapshot?.preloadAssets); }, [room.snapshot?.preloadAssets]);
+  const mysterySrc = useMysteryImage(room.snapshot?.roundIndex ?? null, room.snapshot?.preloadAssets, room.snapshot?.mysteryImageUrl ?? room.snapshot?.silhouetteUrl);
   if (room.loading && !room.snapshot) return <main className="display-shell"><Spinner /></main>;
   if (!room.snapshot) return <main className="display-shell display-center"><h1>Room not found</h1><p>{room.error}</p></main>;
-  const snapshot = room.snapshot; const reveal = snapshot.revealedEmployee; const joinUrl = `${location.origin}/join/${code}`; const revealSrc = reveal?.mediaAvailable ? `/api/rooms/${code}/media/${reveal.id}` : null;
+  const snapshot = room.snapshot; const reveal = snapshot.revealedEmployee; const joinUrl = `${location.origin}/join/${code}`;
   return <main className={`display-shell display-state-${snapshot.phase}`}><header className="display-header"><Brand compact /><div>{snapshot.phase !== 'complete' && <span className="live-dot">Live</span>}{snapshot.phase !== 'lobby' && snapshot.phase !== 'complete' && <strong>Round {(snapshot.roundIndex ?? 0) + 1} / {snapshot.roundCount}</strong>}</div></header>{room.offline && <div className="connection-banner">Display offline — reconnecting automatically</div>}
     {snapshot.phase === 'lobby' && <section className="display-lobby"><div><p className="eyebrow">The studio is open</p><h1>Gather the <em>crew.</em></h1><p>Scan the code. Pick a player name. Get ready for the first mystery.</p><div className="audience-meter"><i /><strong>{snapshot.connectedParticipantCount}</strong><span>player{snapshot.connectedParticipantCount === 1 ? '' : 's'} in the audience</span></div></div><div className="join-board angle-panel"><span>Join on your phone</span><div className="qr"><QRCodeSVG value={joinUrl} size={240} level="M" marginSize={2} title={`Scan to join room ${code}`} /></div><p>{location.host}</p><strong>{code}</strong></div></section>}
-    {snapshot.phase === 'question_open' && <section className="display-question"><PortraitChamber src={snapshot.silhouetteUrl} /><div><p className="eyebrow">Mystery {(snapshot.roundIndex ?? 0) + 1}</p><h1>{snapshot.prompt ?? 'Who is this team member?'}</h1><div className="display-choices">{snapshot.choices.map((choice, index) => <div key={choice.id}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span></div>)}</div><div className="answer-meter"><i><b style={{ width: `${answerDenominator(snapshot) ? (snapshot.submittedAnswerCount / answerDenominator(snapshot)) * 100 : 0}%` }} /></i><strong>{snapshot.submittedAnswerCount} / {answerDenominator(snapshot)}</strong><span>eligible answers locked in</span></div></div></section>}
-    {snapshot.phase === 'answers_locked' && <section className="display-locked"><PortraitChamber src={snapshot.silhouetteUrl} /><div className="lock-slam"><span>Locked in</span><h1>The room has spoken.</h1><p>Stand by for the reveal.</p></div></section>}
-    {(snapshot.phase === 'employee_revealed' || snapshot.phase === 'results_displayed') && reveal && <section className="display-reveal"><PortraitChamber src={revealSrc} revealed name={reveal.displayName} /><div><p className="eyebrow">Mystery solved</p><h1>{reveal.displayName}</h1>{reveal.team && <h2>{reveal.team}</h2>}{reveal.funFact && <blockquote>“{reveal.funFact}”</blockquote>}{snapshot.phase === 'results_displayed' && <Results snapshot={snapshot} large />}</div></section>}
+    {snapshot.phase === 'question_open' && <section className="display-question"><PortraitChamber src={mysterySrc} /><div><p className="eyebrow">Mystery {(snapshot.roundIndex ?? 0) + 1}</p><h1>{snapshot.prompt ?? 'Who is this team member?'}</h1><div className="display-choices">{snapshot.choices.map((choice, index) => <div key={choice.id}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span></div>)}</div><div className="answer-meter"><i><b style={{ width: `${answerDenominator(snapshot) ? (snapshot.submittedAnswerCount / answerDenominator(snapshot)) * 100 : 0}%` }} /></i><strong>{snapshot.submittedAnswerCount} / {answerDenominator(snapshot)}</strong><span>eligible answers locked in</span></div></div></section>}
+    {snapshot.phase === 'answers_locked' && <section className="display-locked"><PortraitChamber src={mysterySrc} /><div className="lock-slam"><span>Locked in</span><h1>The room has spoken.</h1><p>Stand by for the reveal.</p></div></section>}
+    {(snapshot.phase === 'employee_revealed' || snapshot.phase === 'results_displayed') && reveal && <section className="display-reveal"><RoomRevealPortrait code={code} reveal={reveal} assets={snapshot.preloadAssets} /><div><p className="eyebrow">Mystery solved</p><h1>{reveal.displayName}</h1>{reveal.team && <h2>{reveal.team}</h2>}{reveal.funFact && <blockquote>“{reveal.funFact}”</blockquote>}{snapshot.phase === 'results_displayed' && <Results snapshot={snapshot} large />}</div></section>}
     {snapshot.phase === 'complete' && <section className="display-complete"><div className="finale-burst">★</div><p className="eyebrow">Final curtain</p><h1>You know the crew.<br /><em>Now make some memories.</em></h1><p>{snapshot.roundCount} mysteries revealed · Thanks for playing.</p></section>}
     <footer className="display-footer"><span>Name That Team Member</span><span>{snapshot.phase === 'complete' ? 'Show complete' : `Room ${code}`}</span></footer></main>;
 }
@@ -488,9 +574,9 @@ function NotFound() { return <main className="error-page"><Brand /><h1>That scen
 export function App() {
   const path = usePath();
   const join = path.match(/^\/join\/([A-Z2-9]{5})$/i); const play = path.match(/^\/play\/([A-Z2-9]{5})$/i); const display = path.match(/^\/display\/([A-Z2-9]{5})$/i); const host = path.match(/^\/host\/([A-Z2-9]{5})$/i); const edit = path.match(/^\/host\/games\/([^/]+)\/edit$/);
-  if (join?.[1]) return <Join code={join[1].toUpperCase()} />;
-  if (play?.[1]) return <ParticipantRoute code={play[1].toUpperCase()} />;
-  if (display?.[1]) return <Display code={display[1].toUpperCase()} />;
+  if (join?.[1]) return <Join key={`join:${join[1].toUpperCase()}`} code={join[1].toUpperCase()} />;
+  if (play?.[1]) return <ParticipantRoute key={`play:${play[1].toUpperCase()}`} code={play[1].toUpperCase()} />;
+  if (display?.[1]) return <Display key={`display:${display[1].toUpperCase()}`} code={display[1].toUpperCase()} />;
   if (path === '/host/games/new') return <GameEditor />;
   if (edit?.[1]) return <GameEditor gameId={edit[1]} />;
   if (host?.[1]) return <HostRoute code={host[1].toUpperCase()} />;

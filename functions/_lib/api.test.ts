@@ -4,9 +4,19 @@ import {
   parseCleanupRealtimeAuth, parseCleanupRooms, parseCreatedRoom, parseHostRoom, parseJoinedParticipant,
   parseMediaByteLimit, parseRoomCreationLimit, parseSubmittedAnswer, readJson, requireAction, roomCode,
   roomCreationSourceHash, throwRpcError, tokenHash, uuid,
+  preloadCacheKey, preloadQuery,
 } from './api';
+import { definition } from '../api/games/index';
 
 describe('API boundary validation', () => {
+  it('rejects discarded definition fields and validates explicit image/fun-fact content early',()=>{
+    const id='550e8400-e29b-41d4-a716-446655440000';const base={name:'Game',questions:[{prompt:'Who?',revealName:'Ada',funFact:'Safe fact',mysteryMediaAssetId:id,revealMediaAssetId:id,choices:[{text:'Ada',isCorrect:true},{text:'Bob',isCorrect:false}]}]};
+    expect(definition(base)).toMatchObject({questions:[{funFact:'Safe fact',mysteryMediaAssetId:id,revealMediaAssetId:id}]});
+    expect(()=>definition({...base,unknown:true})).toThrow('unsupported field');
+    expect(()=>definition({...base,questions:[{...base.questions[0],silentDrop:true}]})).toThrow('invalid');
+    expect(()=>definition({...base,questions:[{...base.questions[0],revealMediaAssetId:'not-uuid'}]})).toThrow('valid pair');
+    expect(()=>definition({...base,questions:[{...base.questions[0],funFact:'bad\u0000fact'}]})).toThrow('safe text');
+  });
   it('accepts the intentionally unambiguous room alphabet', () => {
     expect(roomCode('AH2Z9')).toBe('AH2Z9');
     expect(() => roomCode('A10OZ')).toThrow(ApiError);
@@ -25,6 +35,15 @@ describe('API boundary validation', () => {
     expect(requireAction('show_results')).toBe('show_results');
     expect(() => requireAction('skip')).toThrow(ApiError);
     expect(bearerToken(new Request('https://example.test', { headers: { authorization: `Bearer ${'a'.repeat(43)}` } }))).toHaveLength(43);
+  });
+  it('accepts only canonical immutable preload query identities',()=>{
+    const id='550e8400-e29b-41d4-a716-446655440000';expect(preloadQuery(new Request(`https://example.test/x?round=1&asset=${id}`))).toEqual({round:1,asset:id});
+    for(const query of [`?asset=${id}&round=1`,`?round=01&asset=${id}`,`?round=1&asset=${id}&x=1`,`?round=1&round=1&asset=${id}`,`?round=1&asset=${id.toUpperCase()}`])expect(()=>preloadQuery(new Request(`https://example.test/x${query}`))).toThrow('invalid');
+  });
+  it('canonicalizes preload cache identity from validated fields instead of the raw path',()=>{
+    const id='550e8400-e29b-41d4-a716-446655440000';
+    const key=preloadCacheKey(new Request(`https://example.test/alternate%2fpath?asset=ignored`),'AH2Z9','reveal',1,id);
+    expect(key.url).toBe(`https://example.test/api/rooms/AH2Z9/reveal-preload?round=1&asset=${id}`);
   });
 
   it('rejects non-JSON and oversized bodies before parsing', async () => {
@@ -132,5 +151,13 @@ describe('sanitized API snapshot shape', () => {
       roomCode: 'ABCDE', phase: 'lobby', results: null,
       prompt: 'Name this mystery teammate', silhouetteUrl: '/api/rooms/ABCDE/silhouette',
     });
+  });
+  it('allowlists preload descriptors and never forwards arbitrary URLs or secret fields',()=>{
+    const normalized=normalizeSnapshot({room_code:'ABCDE',phase:'lobby',preload_assets:[{key:'ABCDE:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=0&asset=550e8400-e29b-41d4-a716-446655440000',storagePath:'secret'}]});
+    expect(normalized.preloadAssets).toEqual([{key:'ABCDE:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=0&asset=550e8400-e29b-41d4-a716-446655440000'}]);
+    expect(()=>normalizeSnapshot({preload_assets:[{key:'ABCDE:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'https://evil.example/reveal'}]})).toThrow('Invalid data service response.');
+    expect(()=>normalizeSnapshot({room_code:'ABCDE',preload_assets:[{key:'ZZZZZ:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=0&asset=550e8400-e29b-41d4-a716-446655440000'}]})).toThrow('Invalid data service response.');
+    expect(()=>normalizeSnapshot({room_code:'ABCDE',preload_assets:[{key:'ABCDE:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=1&asset=550e8400-e29b-41d4-a716-446655440000'}]})).toThrow('Invalid data service response.');
+    expect(()=>normalizeSnapshot({room_code:'ABCDE',preload_assets:[{key:'ABCDE:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=0&asset=550e8400-e29b-41d4-a716-446655440000&extra=x'}]})).toThrow('Invalid data service response.');
   });
 });

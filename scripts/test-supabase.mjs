@@ -221,7 +221,22 @@ try {
     p_code: roomCode, p_display_name: 'Grace', p_participant_token_hash: await hash(secondToken),
   });
   await expectMarker('host_action', { p_code: roomCode, p_host_token_hash: await hash(token()), p_action: 'start' }, 'HOST_UNAUTHORIZED');
-  await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'start' });
+  const beforeDirect = await admin.from('rooms').select('phase,version').eq('id', roomId).single();
+  assert(!beforeDirect.error);
+  for (const args of [
+    { p_code: roomCode, p_host_token: null, p_action: 'start' },
+    { p_code: roomCode, p_action: 'start' },
+    { p_code: roomCode, p_host_token: token(), p_action: 'start' },
+    { p_code: roomCode, p_host_token: hostToken, p_action: 'unknown' },
+  ]) {
+    const rejected = await anon.rpc('host_action_direct', args);
+    assert(rejected.error, `direct host action must reject ${JSON.stringify(args)}`);
+  }
+  const afterRejectedDirect = await admin.from('rooms').select('phase,version').eq('id', roomId).single();
+  assert(!afterRejectedDirect.error);
+  assert.deepEqual(afterRejectedDirect.data, beforeDirect.data, 'rejected direct credentials must not mutate phase or version');
+  const directStart = await anon.rpc('host_action_direct', { p_code: roomCode, p_host_token: hostToken, p_action: 'start' });
+  assert(!directStart.error, `valid direct host capability failed: ${directStart.error?.message}`);
 
   const hostView = await rpc('host_room', { p_code: roomCode, p_host_token_hash: await hash(hostToken) });
   assert(hostView.correctEmployee?.id, 'authenticated host should receive the current correct employee');

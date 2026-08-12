@@ -5,6 +5,7 @@ type SnapshotRow = {
   room_code: string; phase: string; round_index: number | null; round_count: number;
   connected_participant_count: number; eligible_participant_count?: number; submitted_answer_count: number; version: number;
   choices: Json; revealed_employee: Json; results: Json; updated_at: string;
+  mystery_image_url?:string|null;preload_assets?:Json;
 };
 export interface HostRoomResponse {
   readonly roomId: string;
@@ -61,6 +62,12 @@ interface Database {
       create_game_session: { Args: { p_admin_token_hash: string; p_game_id: string; p_code: string; p_host_token_hash: string; p_idempotency_key: string }; Returns: Json };
       play_again_session: { Args: { p_code: string; p_host_token_hash: string; p_new_code: string; p_new_host_token_hash: string; p_idempotency_key: string }; Returns: Json };
       silhouette_media_path: { Args: { p_code: string }; Returns: Json };
+      register_game_media_pair: { Args: { p_admin_token_hash:string;p_source_hash:string;p_game_id:string;p_mystery_path:string;p_reveal_path:string;p_mystery_mime:string;p_reveal_mime:string;p_mystery_bytes:number;p_reveal_bytes:number }; Returns: Json };
+      complete_game_media_pair: { Args: { p_admin_token_hash:string;p_game_id:string;p_media_id:string }; Returns: Json };
+      get_game_media_role: { Args: { p_admin_token_hash:string;p_game_id:string;p_media_id:string;p_role:string }; Returns: Json };
+      room_preload_media: { Args: { p_code:string;p_round:number;p_asset_id:string;p_kind:string }; Returns: Json };
+      current_mystery_media_path: { Args: { p_code:string }; Returns: Json };
+      reveal_preload_key: { Args: { p_code:string;p_choice_id:string }; Returns: Json };
     };
     Enums: { game_phase: string };
     CompositeTypes: Record<never, never>;
@@ -171,6 +178,23 @@ export function opaqueToken(value: unknown): string {
 }
 
 export function parseMediaLocation(value:unknown):{storagePath:string;mimeType:string}{const row=rpcObject(value);const path=rpcString(row.storagePath);const mime=rpcString(row.mimeType);if(!/^(portraits|game-media)\//.test(path)||!['image/jpeg','image/png','image/webp'].includes(mime))throw new Error('Invalid data service response.');return{storagePath:path,mimeType:mime};}
+export function roomMediaRole(value:unknown):'mystery'|'reveal'{if(value==='mystery'||value==='reveal')return value;throw new ApiError(400,'INVALID_MEDIA_ROLE','Image role is invalid.');}
+export function preloadQuery(request:Request):{round:number;asset:string}{const raw=new URL(request.url).search;if(!/^\?round=(0|[1-9]\d?)&asset=[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(raw))throw new ApiError(400,'INVALID_PRELOAD_ROUND','Preload URL is invalid.');const query=new URLSearchParams(raw);return{round:Number(query.get('round')),asset:uuid(query.get('asset'),'Session asset')};}
+export function preloadCacheKey(request:Request,code:string,kind:'mystery'|'reveal',round:number,asset:string):Request{
+ const origin=new URL(request.url).origin;const canonical=new URL(`/api/rooms/${code}/${kind}-preload`,origin);canonical.search=`?round=${round}&asset=${asset}`;return new Request(canonical.toString(),{method:'GET'});
+}
+
+export function parsePreloadLocation(value:unknown,kind:'mystery'|'reveal'):{storagePath:string;mimeType:string;roundIndex:number;key?:string;iv?:string;aad?:string}{
+ const row=rpcObject(value);const storagePath=rpcString(row.storagePath);const mimeType=rpcString(row.mimeType);const roundIndex=rpcInteger(row.roundIndex);
+ if(!storagePath.startsWith('game-media/')||roundIndex<0||roundIndex>99||!['image/png','image/jpeg','image/webp'].includes(mimeType))throw new Error('Invalid data service response.');
+ if(kind==='reveal'){const key=rpcString(row.key),iv=rpcString(row.iv),aad=rpcString(row.aad);if(!/^[A-Za-z0-9_-]{43}$/.test(key)||!/^[A-Za-z0-9_-]{16}$/.test(iv)||aad.length<1||aad.length>160||!['image/png','image/jpeg','image/webp'].includes(mimeType))throw new Error('Invalid data service response.');return{storagePath,mimeType,roundIndex,key,iv,aad};}return{storagePath,mimeType,roundIndex};
+}
+
+export function parseRevealKey(value:unknown):{key:string;iv:string;mimeType:string;aad:string}{const row=rpcObject(value);const key=rpcString(row.key),iv=rpcString(row.iv),mimeType=rpcString(row.mimeType),aad=rpcString(row.aad);if(!/^[A-Za-z0-9_-]{43}$/.test(key)||!/^[A-Za-z0-9_-]{16}$/.test(iv)||!['image/png','image/jpeg','image/webp'].includes(mimeType)||aad.length<1||aad.length>160)throw new Error('Invalid data service response.');return{key,iv,mimeType,aad};}
+
+function parsePreloadAssets(value:unknown,expectedCode:string):ReadonlyArray<{key:string;kind:'mystery'|'reveal-encrypted';roundIndex:number;url:string}>{
+ if(!Array.isArray(value)||value.length>4)throw new Error('Invalid data service response.');return value.map(raw=>{const row=rpcObject(raw);const key=rpcString(row.key),rawKind=rpcString(row.kind),roundIndex=rpcInteger(row.roundIndex),url=rpcString(row.url);const kind:'mystery'|'reveal-encrypted'=rawKind==='mystery'?'mystery':rawKind==='reveal-encrypted'?'reveal-encrypted':(()=>{throw new Error('Invalid data service response.');})();const keyKind=kind==='mystery'?'mystery':'reveal';let parsed:URL;try{parsed=new URL(url,'https://local.invalid');}catch{throw new Error('Invalid data service response.');}const params=[...parsed.searchParams.keys()];const asset=parsed.searchParams.get('asset'),round=parsed.searchParams.get('round');if(roundIndex<0||roundIndex>99||key!==`${expectedCode}:${roundIndex}:${keyKind}`||parsed.origin!=='https://local.invalid'||parsed.pathname!==`/api/rooms/${expectedCode}/${keyKind}-preload`||params.length!==2||params[0]!=='round'||params[1]!=='asset'||round!==String(roundIndex)||!asset||!UUID.test(asset))throw new Error('Invalid data service response.');return{key,kind,roundIndex,url};});
+}
 
 export function idempotencyKey(request: Request): string {
   const value = request.headers.get('idempotency-key');
@@ -238,6 +262,7 @@ export function throwRpcError(error: ServiceError): never {
     ['PROJECT_GAME_DAILY_LIMITED',503,'PROJECT_GAME_DAILY_LIMITED','Daily saved-game capacity is temporarily full.'],
     ['GAME_SOURCE_DAILY_LIMITED',429,'GAME_SOURCE_DAILY_LIMITED','This network has reached its daily saved-game allowance.'],
     ['PROJECT_MEDIA_DAILY_LIMITED', 503, 'PROJECT_MEDIA_DAILY_LIMITED', 'Daily image capacity is temporarily full.'],
+    ['MEDIA_SOURCE_DAILY_LIMITED', 429, 'MEDIA_UPLOAD_BYTE_LIMITED', 'This network has reached its daily image allowance.'],
     ['MEDIA_QUOTA_EXCEEDED', 409, 'MEDIA_QUOTA_EXCEEDED', 'This studio has reached its private media limit.'],
     ['PROJECT_MEDIA_CAPACITY_REACHED', 503, 'PROJECT_MEDIA_CAPACITY_REACHED', 'Image capacity is temporarily full. Try again later.'],
     ['SESSION_QUOTA_EXCEEDED', 429, 'SESSION_QUOTA_EXCEEDED', 'Too many sessions are active or recently retained.'],
@@ -263,8 +288,9 @@ export function throwRpcError(error: ServiceError): never {
 }
 
 export function normalizeSnapshot(row: Record<string, unknown>): Record<string, unknown> {
+  const normalizedCode=rpcString(row.room_code);
   return {
-    roomCode: row.room_code,
+    roomCode: normalizedCode,
     phase: row.phase,
     roundIndex: row.round_index,
     roundCount: row.round_count,
@@ -275,6 +301,8 @@ export function normalizeSnapshot(row: Record<string, unknown>): Record<string, 
     choices: row.choices,
     prompt: row.prompt ?? null,
     silhouetteUrl: row.silhouette_url ?? null,
+    mysteryImageUrl: row.mystery_image_url ?? row.silhouette_url ?? null,
+    preloadAssets: parsePreloadAssets(row.preload_assets ?? [],normalizedCode),
     revealedEmployee: row.revealed_employee,
     results: row.results,
     updatedAt: row.updated_at,
@@ -327,12 +355,17 @@ export function parseMedia(value: unknown): {readonly id:string;readonly mimeTyp
   if(!['image/jpeg','image/png','image/webp'].includes(mime)||size<1||size>5242880||!preview.startsWith('/api/games/')) throw new Error('Invalid data service response.');
   return {id:rpcUuid(row.id),mimeType:mime,byteSize:size,previewUrl:preview};
 }
+export function parseMediaPair(value:unknown):{readonly id:string;readonly mysteryMimeType:string;readonly revealMimeType:string;readonly mysteryByteSize:number;readonly revealByteSize:number;readonly mysteryPreviewUrl:string;readonly revealPreviewUrl:string}{
+ const r=rpcObject(value);const mysteryMimeType=rpcString(r.mysteryMimeType),revealMimeType=rpcString(r.revealMimeType);const mysteryByteSize=rpcInteger(r.mysteryByteSize),revealByteSize=rpcInteger(r.revealByteSize);const mysteryPreviewUrl=rpcString(r.mysteryPreviewUrl),revealPreviewUrl=rpcString(r.revealPreviewUrl);
+ if(!['image/png','image/jpeg','image/webp'].includes(mysteryMimeType)||!['image/png','image/jpeg','image/webp'].includes(revealMimeType)||mysteryByteSize<1||mysteryByteSize>5242880||revealByteSize<1||revealByteSize>5242880||!mysteryPreviewUrl.endsWith('/mystery')||!revealPreviewUrl.endsWith('/reveal'))throw new Error('Invalid data service response.');
+ return{id:rpcUuid(r.id),mysteryMimeType,revealMimeType,mysteryByteSize,revealByteSize,mysteryPreviewUrl,revealPreviewUrl};
+}
 
 export interface GameChoiceDefinition {readonly id:string;readonly position:number;readonly text:string;readonly isCorrect:boolean}
-export interface GameQuestionDefinition {readonly id:string;readonly position:number;readonly prompt:string;readonly revealName:string;readonly mediaAssetId:string|null;readonly mediaPreviewUrl:string|null;readonly choices:readonly GameChoiceDefinition[]}
+export interface GameQuestionDefinition {readonly id:string;readonly position:number;readonly prompt:string;readonly revealName:string;readonly mysteryMediaAssetId:string|null;readonly revealMediaAssetId:string|null;readonly mysteryMediaPreviewUrl:string|null;readonly revealMediaPreviewUrl:string|null;readonly funFact:string|null;readonly choices:readonly GameChoiceDefinition[]}
 export interface GameDefinition {readonly id:string;readonly name:string;readonly revision:number;readonly createdAt:string;readonly updatedAt:string;readonly questions:readonly GameQuestionDefinition[]}
 export function parseGameDefinition(value:unknown):GameDefinition {
-  const row=rpcObject(value);const questions=Array.isArray(row.questions)?row.questions.map((raw,qIndex)=>{const q=rpcObject(raw);const choices=Array.isArray(q.choices)?q.choices.map((r,cIndex)=>{const c=rpcObject(r);const position=rpcInteger(c.position);if(position!==cIndex||typeof c.isCorrect!=='boolean')throw new Error('Invalid data service response.');return{id:rpcUuid(c.id),position,text:rpcString(c.text),isCorrect:c.isCorrect};}):(()=>{throw new Error('Invalid data service response.');})();const position=rpcInteger(q.position);if(position!==qIndex||choices.filter(c=>c.isCorrect).length!==1)throw new Error('Invalid data service response.');const mediaAssetId=q.mediaAssetId===null?null:rpcUuid(q.mediaAssetId);const mediaPreviewUrl=q.mediaPreviewUrl===null?null:rpcString(q.mediaPreviewUrl);return{id:rpcUuid(q.id),position,prompt:rpcString(q.prompt),revealName:rpcString(q.revealName),mediaAssetId,mediaPreviewUrl,choices};}):(()=>{throw new Error('Invalid data service response.');})();return{id:rpcUuid(row.id),name:rpcString(row.name),revision:rpcInteger(row.revision),createdAt:rpcString(row.createdAt),updatedAt:rpcString(row.updatedAt),questions};
+  const row=rpcObject(value);const questions=Array.isArray(row.questions)?row.questions.map((raw,qIndex)=>{const q=rpcObject(raw);const choices=Array.isArray(q.choices)?q.choices.map((r,cIndex)=>{const c=rpcObject(r);const position=rpcInteger(c.position);if(position!==cIndex||typeof c.isCorrect!=='boolean')throw new Error('Invalid data service response.');return{id:rpcUuid(c.id),position,text:rpcString(c.text),isCorrect:c.isCorrect};}):(()=>{throw new Error('Invalid data service response.');})();const position=rpcInteger(q.position);if(position!==qIndex||choices.filter(c=>c.isCorrect).length!==1)throw new Error('Invalid data service response.');const mysteryMediaAssetId=q.mysteryMediaAssetId===null?null:rpcUuid(q.mysteryMediaAssetId);const revealMediaAssetId=q.revealMediaAssetId===null?null:rpcUuid(q.revealMediaAssetId);const mysteryMediaPreviewUrl=q.mysteryMediaPreviewUrl===null?null:rpcString(q.mysteryMediaPreviewUrl);const revealMediaPreviewUrl=q.revealMediaPreviewUrl===null?null:rpcString(q.revealMediaPreviewUrl);const funFact=q.funFact===null?null:rpcString(q.funFact);if(mysteryMediaAssetId!==revealMediaAssetId||(funFact?.length??0)>500)throw new Error('Invalid data service response.');return{id:rpcUuid(q.id),position,prompt:rpcString(q.prompt),revealName:rpcString(q.revealName),mysteryMediaAssetId,revealMediaAssetId,mysteryMediaPreviewUrl,revealMediaPreviewUrl,funFact,choices};}):(()=>{throw new Error('Invalid data service response.');})();return{id:rpcUuid(row.id),name:rpcString(row.name),revision:rpcInteger(row.revision),createdAt:rpcString(row.createdAt),updatedAt:rpcString(row.updatedAt),questions};
 }
 export function parseGameList(value:unknown):ReadonlyArray<{id:string;name:string;revision:number;questionCount:number;createdAt:string;updatedAt:string}>{
   if(!Array.isArray(value))throw new Error('Invalid data service response.');return value.map(raw=>{const r=rpcObject(raw);return{id:rpcUuid(r.id),name:rpcString(r.name),revision:rpcInteger(r.revision),questionCount:rpcInteger(r.questionCount),createdAt:rpcString(r.createdAt),updatedAt:rpcString(r.updatedAt)};});
@@ -369,10 +402,10 @@ export async function cleanupGameMedia(supabase: ReturnType<typeof adminClient>,
     if (!Array.isArray(claimed.data) || claimed.data.length > 20) throw new Error('Invalid media GC response.');
     const assets = claimed.data.map((raw) => {
       const row = rpcObject(raw);
-      return { id: rpcUuid(row.id), storagePath: rpcString(row.storagePath), silhouetteStoragePath: rpcString(row.silhouetteStoragePath) };
+      return { id:rpcUuid(row.id),storagePath:rpcString(row.storagePath),silhouetteStoragePath:rpcString(row.silhouetteStoragePath) };
     });
     if (assets.length > 0) {
-      const removed = await supabase.storage.from('reveal-media').remove(assets.flatMap((asset) => [asset.storagePath, asset.silhouetteStoragePath]));
+      const removed = await supabase.storage.from('reveal-media').remove(assets.flatMap((asset) => [asset.storagePath,asset.silhouetteStoragePath]));
       if (!removed.error) {
         const finalized = await supabase.rpc('finalize_game_media_gc', { p_admin_token_hash: adminHash, p_media_ids: assets.map((asset) => asset.id) });
         if (finalized.error) throw finalized.error;

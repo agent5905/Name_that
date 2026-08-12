@@ -2,58 +2,105 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from '@supaba
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GameSnapshot, ParticipantSnapshot } from '../domain/game';
 import { errorMessage, getSnapshot } from '../lib/api';
-import { RealtimeInvalidationGate } from '../lib/realtimeGate';
+import { isPriorityPhaseInvalidation, RealtimeInvalidationGate } from '../lib/realtimeGate';
+import { parsePushedSnapshot, preserveRevealEnrichment, shouldReplaceSnapshot } from '../lib/snapshot';
 
 interface ParticipantAuth { readonly token: string; readonly playerId: string }
 
 export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
   const participantToken = participant?.token;
   const participantPlayerId = participant?.playerId;
-  const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
+  const [snapshot, setSnapshotState] = useState<GameSnapshot | null>(null);
   const [participantState, setParticipantState] = useState<ParticipantSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(!navigator.onLine);
   const abortRef = useRef<AbortController | null>(null);
+  const generationRef = useRef(0);
   const inFlightRef = useRef(false);
   const queuedRef = useRef(false);
   const snapshotVersionRef = useRef(-1);
   const broadcastTimerRef = useRef<number | null>(null);
   const invalidationGateRef = useRef(new RealtimeInvalidationGate());
-  const refetchRef = useRef<(quiet?: boolean, source?: 'recovery' | 'broadcast') => Promise<void>>(() => Promise.resolve());
+  const snapshotPhaseRef = useRef<string | null>(null);
+  const snapshotRoundRef = useRef<number | null>(null);
+  const lastPushedVersionRef = useRef(-1);
+  const snapshotRef = useRef<GameSnapshot | null>(null);
+  const refetchRef = useRef<(quiet?: boolean, source?: 'recovery' | 'broadcast' | 'transition') => Promise<void>>(() => Promise.resolve());
 
-  const refetch = useCallback(async (quiet = false, source: 'recovery' | 'broadcast' = 'recovery') => {
+  const applySnapshot = useCallback((next: GameSnapshot, source: 'http' | 'push', nextParticipant?: ParticipantSnapshot | null, updateParticipant = false) => {
+    const currentVersion = snapshotVersionRef.current;
+    if (!shouldReplaceSnapshot(source, next.version, currentVersion, lastPushedVersionRef.current)) {
+      if (updateParticipant && next.roundIndex === snapshotRoundRef.current) setParticipantState(nextParticipant ?? null);
+      return false;
+    }
+    const effective = source === 'http' ? preserveRevealEnrichment(snapshotRef.current, next) : next;
+    const roundChanged = effective.roundIndex !== snapshotRoundRef.current;
+    setSnapshotState(effective);
+    snapshotRef.current = effective;
+    snapshotVersionRef.current = effective.version;
+    snapshotPhaseRef.current = effective.phase;
+    snapshotRoundRef.current = effective.roundIndex;
+    if (source === 'push') lastPushedVersionRef.current = effective.version;
+    if (source === 'push' && roundChanged && effective.phase === 'question_open') setParticipantState(null);
+    else if (updateParticipant) setParticipantState(nextParticipant ?? null);
+    setError(null);
+    setLoading(false);
+    return true;
+  }, []);
+
+  const refetch = useCallback(async (quiet = false, source: 'recovery' | 'broadcast' | 'transition' = 'recovery') => {
     if (inFlightRef.current) {
-      if (source === 'recovery') queuedRef.current = true;
+      if (source !== 'broadcast') queuedRef.current = true;
       return;
     }
     const controller = new AbortController();
+    const generation = generationRef.current;
     abortRef.current = controller;
     inFlightRef.current = true;
     if (!quiet) setLoading(true);
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 15_000);
     try {
       const auth = participantToken && participantPlayerId
         ? { token: participantToken, playerId: participantPlayerId }
         : undefined;
       const payload = await getSnapshot(code, auth, controller.signal);
-      setSnapshot(payload.snapshot);
-      snapshotVersionRef.current = payload.snapshot.version;
-      setParticipantState(payload.participant ?? null);
-      setError(null);
+      if (controller.signal.aborted || generation !== generationRef.current) return;
+      applySnapshot(payload.snapshot, 'http', payload.participant ?? null, true);
     } catch (reason) {
-      if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError(errorMessage(reason));
+      if (generation !== generationRef.current) return;
+      if (timedOut) setError('The room took too long to respond. Try again.');
+      else if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError(errorMessage(reason));
     } finally {
-      inFlightRef.current = false;
-      if (!controller.signal.aborted) setLoading(false);
-      if (queuedRef.current) {
-        queuedRef.current = false;
-        window.setTimeout(() => { void refetchRef.current(true, 'recovery'); }, 0);
+      window.clearTimeout(timeout);
+      if (generation === generationRef.current && abortRef.current === controller) {
+        inFlightRef.current = false;
+        setLoading(false);
+        if (queuedRef.current) {
+          queuedRef.current = false;
+          window.setTimeout(() => { void refetchRef.current(true, 'recovery'); }, 0);
+        }
       }
     }
-  }, [code, participantPlayerId, participantToken]);
+  }, [applySnapshot, code, participantPlayerId, participantToken]);
   refetchRef.current = refetch;
 
   useEffect(() => {
+    generationRef.current += 1;
+    abortRef.current?.abort();
+    inFlightRef.current = false;
+    queuedRef.current = false;
+    snapshotVersionRef.current = -1;
+    snapshotPhaseRef.current = null;
+    snapshotRoundRef.current = null;
+    lastPushedVersionRef.current = -1;
+    snapshotRef.current = null;
+    invalidationGateRef.current = new RealtimeInvalidationGate();
+    setSnapshotState(null);
+    setParticipantState(null);
+    setError(null);
+    setLoading(true);
     void refetch();
     const timer = window.setInterval(() => { void refetch(true); }, 8_000);
     const onOnline = () => { setOffline(false); void refetch(true); };
@@ -98,6 +145,21 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
                 && 'version' in broadcastPayload && typeof broadcastPayload.version === 'number' && Number.isInteger(broadcastPayload.version)
               ) {
                 const version = broadcastPayload.version;
+                const phase = 'phase' in broadcastPayload ? broadcastPayload.phase : null;
+                const pushed = 'snapshot' in broadcastPayload ? broadcastPayload.snapshot : null;
+                const priority = isPriorityPhaseInvalidation(version, snapshotVersionRef.current, phase, snapshotPhaseRef.current)
+                  || (version === snapshotVersionRef.current && version !== lastPushedVersionRef.current && pushed !== null);
+                if (priority) {
+                  if (broadcastTimerRef.current !== null) {
+                    window.clearTimeout(broadcastTimerRef.current);
+                    broadcastTimerRef.current = null;
+                  }
+                  invalidationGateRef.current.reset();
+                  const next = parsePushedSnapshot(pushed, code, version, phase);
+                  if (next) applySnapshot(next, 'push');
+                  else void refetch(true, 'transition');
+                  return;
+                }
                 const delay = invalidationGateRef.current.consider(version, snapshotVersionRef.current, Date.now(), inFlightRef.current);
                 if (delay === 0) {
                   void refetch(true, 'broadcast');
@@ -125,6 +187,7 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
 
     return () => {
       cancelled = true;
+      generationRef.current += 1;
       abortRef.current?.abort();
       if (broadcastTimerRef.current !== null) window.clearTimeout(broadcastTimerRef.current);
       window.clearInterval(timer);
@@ -133,7 +196,8 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
       document.removeEventListener('visibilitychange', onVisibility);
       if (channel && realtimeClient) void realtimeClient.removeChannel(channel);
     };
-  }, [code, refetch]);
+  }, [applySnapshot, code, participantPlayerId, participantToken, refetch]);
 
+  const setSnapshot = useCallback((next: GameSnapshot) => { applySnapshot(next, 'http'); }, [applySnapshot]);
   return { snapshot, participantState, loading, error, offline, refetch, setSnapshot };
 }

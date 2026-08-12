@@ -87,7 +87,8 @@ test('participant question is clear and touch-safe at 390x844', async ({ page },
   await mockGame(page, 'question_open');
   await page.goto(`/play/${code}`);
   await expect(page.getByRole('heading', { name: 'Who is this team member?' })).toBeVisible();
-  expect((await page.getByRole('link', { name: 'Name That Team Member' }).boundingBox())?.height).toBeGreaterThanOrEqual(48);
+  await expect(page.getByRole('link', { name: 'Name That Team Member' })).toHaveCount(0);
+  expect((await page.getByLabel('Name That Team Member').boundingBox())?.height).toBeGreaterThanOrEqual(48);
   const answerButtons = page.locator('.choice');
   await expect(answerButtons).toHaveCount(4);
   for (const button of await answerButtons.all()) expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(48);
@@ -101,12 +102,30 @@ test('join flow fits 360x800 and persists a session', async ({ page }, testInfo)
   await page.setViewportSize({ width: 360, height: 800 });
   await mockGame(page, 'lobby');
   await page.goto(`/join/${code}`);
-  expect((await page.getByRole('link', { name: 'Name That Team Member' }).boundingBox())?.height).toBeGreaterThanOrEqual(48);
+  await expect(page.getByRole('link', { name: 'Name That Team Member' })).toHaveCount(0);
+  expect((await page.getByLabel('Name That Team Member').boundingBox())?.height).toBeGreaterThanOrEqual(48);
   await page.getByLabel('Display name').fill('Alex Rivera');
   await page.screenshot({ path: testInfo.outputPath('participant-join-360.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: /I’m ready/ }).click();
   await expect(page).toHaveURL(new RegExp(`/play/${code}$`));
   await expect.poll(() => page.evaluate(() => localStorage.getItem('name-that:participant'))).not.toBeNull();
+});
+
+test('same-path room switch joins the new room without leaving its form mounted', async ({ page }) => {
+  const roomB = 'N8W2Q';
+  await participantSession(page);
+  await mockGame(page, 'lobby');
+  await page.goto(`/play/${code}`);
+  await expect(page.getByText(/Welcome, Alex Rivera/)).toBeVisible();
+  await page.evaluate((next) => {
+    history.pushState({}, '', `/play/${next}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, roomB);
+  await page.getByLabel('Display name').fill('Room B Player');
+  await page.getByRole('button', { name: /ready/i }).click();
+  await expect(page).toHaveURL(new RegExp(`/play/${roomB}$`));
+  await expect(page.getByLabel('Display name')).toHaveCount(0);
+  await expect(page.getByText(/Welcome, Alex Rivera/)).toBeVisible();
 });
 
 test('lobby display renders a decodable room URL at 1920x1080', async ({ page }, testInfo) => {
@@ -301,14 +320,14 @@ test('saved game library reads as a game collection and hosts with an idempotent
   expect(sessionBody!.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
 });
 
-test('editor supports variable answers, image silhouette preview, question ordering, and the two-step save', async ({ page }, testInfo) => {
+test('editor persists separate Mystery and Reveal images plus optional Fun Fact', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
   const requests: string[] = [];
   let uploadedMultipart = '';
   await page.route('**/api/**', async (route) => {
     const request = route.request(); const url = new URL(request.url()); requests.push(`${request.method()} ${url.pathname}`);
-    if (url.pathname.endsWith('/media')) { uploadedMultipart = request.postDataBuffer()?.toString('latin1') ?? ''; await route.fulfill({ json: { media: { id: 'media-1', mimeType: 'image/png', previewUrl: '/api/games/game-1/media/media-1' } } }); return; }
+    if (url.pathname.endsWith('/media')) { uploadedMultipart = request.postDataBuffer()?.toString('latin1') ?? ''; await route.fulfill({ json: { media: { id: 'media-1', mysteryMimeType: 'image/png', revealMimeType: 'image/png', mysteryPreviewUrl: '/api/games/game-1/media/media-1?role=mystery', revealPreviewUrl: '/api/games/game-1/media/media-1?role=reveal' } } }); return; }
     if (request.method() === 'POST' && url.pathname === '/api/games') { await route.fulfill({ json: { game: { id: 'game-1', name: 'Summer Team Ice Breaker', revision: 1, questions: [] } } }); return; }
     if (request.method() === 'PUT') {
       const body = request.postDataJSON() as { name: string; questions: Array<Record<string, unknown>> };
@@ -319,21 +338,25 @@ test('editor supports variable answers, image silhouette preview, question order
   await page.goto('/host/games/new');
   await page.getByLabel('Game name').fill('Summer Team Ice Breaker');
   await page.getByLabel('Employee / reveal name').fill('Priya Shah');
+  await page.getByLabel('Fun Fact (optional)').fill('Has visited 17 countries.');
   await page.getByRole('textbox', { name: 'Answer 1' }).fill('Priya Shah');
   await page.getByRole('textbox', { name: 'Answer 2' }).fill('Maya Chen');
   await page.getByRole('button', { name: /Add answer/ }).click();
   await page.getByRole('textbox', { name: 'Answer 3' }).fill('Jordan Brooks');
-  await page.locator('input[type=file]').setInputFiles(resolve('content/portraits/priya-shah.webp'));
-  await expect(page.getByRole('img', { name: 'Employee preview' })).toBeVisible();
-  await expect(page.getByText(/flattened two-tone silhouette/i)).toBeVisible();
+  await page.getByLabel('Mystery Image').setInputFiles(resolve('content/portraits/maya-chen.webp'));
+  await page.getByLabel('Reveal Image').setInputFiles(resolve('content/portraits/priya-shah.webp'));
+  await expect(page.getByRole('img', { name: 'Mystery Image preview' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Reveal Image preview' })).toBeVisible();
   await page.getByRole('button', { name: 'Reveal', exact: true }).click();
   await expect(page.getByRole('img', { name: 'Portrait of Priya Shah' })).toBeVisible();
+  await expect(page.locator('.preview-fun-fact')).toHaveText('Has visited 17 countries.');
   await page.screenshot({ path: testInfo.outputPath('game-editor-1600.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: /Save game/ }).click();
   await expect.poll(() => requests.join('|')).toContain('PUT /api/games/game-1');
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   expect(requests).toEqual(expect.arrayContaining(['POST /api/games', 'POST /api/games/game-1/media', 'PUT /api/games/game-1']));
-  expect(uploadedMultipart).toContain('name="file"');
+  expect(uploadedMultipart).toContain('name="mystery"');
+  expect(uploadedMultipart).toContain('name="reveal"');
   expect(uploadedMultipart).toContain('filename="priya-shah-normalized.png"');
   expect(uploadedMultipart).toContain('Content-Type: image/png');
   expect(uploadedMultipart).not.toContain('name="silhouette"');
@@ -347,31 +370,20 @@ test('late joiners do not depress current-round answer progress', async ({ page 
   await expect(page.getByText(/eligible answers locked in/i)).toBeVisible();
 });
 
-test('local silhouette preview survives bright, dark, portrait, and landscape source images', async ({ page }) => {
+test('editor previews host-authored mystery and reveal files without transforming either', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
   await page.goto('/host/games/new');
-  const input = page.locator('input[type=file]');
-  for (const fixture of [
-    { name: 'bright-landscape.png', width: 640, height: 320, brightness: 225 },
-    { name: 'dark-landscape.png', width: 640, height: 320, brightness: 38 },
-    { name: 'bright-portrait.png', width: 320, height: 640, brightness: 220 },
-    { name: 'dark-portrait.png', width: 320, height: 640, brightness: 42 },
-  ]) {
-    await input.setInputFiles({ name: fixture.name, mimeType: 'image/png', buffer: rasterFixture(fixture.width, fixture.height, fixture.brightness) });
-    const preview = page.locator('.preview-stage .chamber-photo img');
-    await expect(preview).toBeVisible();
-    const decoded = PNG.sync.read(await preview.screenshot());
-    let dark = 0; let cyan = 0;
-    for (let offset = 0; offset < decoded.data.length; offset += 4) {
-      const red = decoded.data[offset] ?? 0; const green = decoded.data[offset + 1] ?? 0; const blue = decoded.data[offset + 2] ?? 0;
-      if (red < 45 && green < 55 && blue < 70) dark += 1;
-      if (red < 120 && green > 145 && blue > 145) cyan += 1;
-    }
-    const pixels = decoded.width * decoded.height;
-    expect(dark / pixels, fixture.name).toBeGreaterThan(.05);
-    expect(cyan / pixels, fixture.name).toBeGreaterThan(.05);
-  }
+  const mystery = rasterFixture(640, 320, 35);
+  const reveal = rasterFixture(320, 640, 225);
+  await page.getByLabel('Mystery Image').setInputFiles({ name: 'mystery.png', mimeType: 'image/png', buffer: mystery });
+  await page.getByLabel('Reveal Image').setInputFiles({ name: 'reveal.png', mimeType: 'image/png', buffer: reveal });
+  await expect(page.getByRole('img', { name: 'Mystery Image preview' })).toBeVisible();
+  await page.getByRole('button', { name: 'Mystery', exact: true }).click();
+  const mysteryPixels = PNG.sync.read(await page.locator('.preview-stage .chamber-photo img').screenshot()).data;
+  await page.getByRole('button', { name: 'Reveal', exact: true }).click();
+  const revealPixels = PNG.sync.read(await page.locator('.preview-stage .chamber-photo img').screenshot()).data;
+  expect(Buffer.compare(mysteryPixels, revealPixels)).not.toBe(0);
 });
 
 test('reveal is immediate and never opens a routine confirmation dialog', async ({ page }) => {
@@ -405,4 +417,39 @@ test('play again retries with the same host token and idempotency key', async ({
   await expect(page.getByRole('button', { name: /Start round/ })).toBeEnabled();
   expect(bodies).toHaveLength(2);
   expect(bodies[1]).toEqual(bodies[0]);
+});
+
+test('same-tab room transition discards a delayed old-room snapshot and terminates loading', async ({ page }) => {
+  const roomB = 'N8W2Q';
+  let releaseOld: (() => void) | undefined;
+  await page.route('**/api/rooms/**/snapshot', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.includes(code)) await new Promise<void>((resolvePromise) => { releaseOld = resolvePromise; });
+    const roomCode = path.includes(roomB) ? roomB : code;
+    await route.fulfill({ json: { snapshot: { ...snapshot('lobby'), roomCode } } });
+  });
+  await page.goto(`/display/${code}`);
+  await expect.poll(() => Boolean(releaseOld)).toBe(true);
+  await page.evaluate((next) => { history.pushState({}, '', `/display/${next}`); window.dispatchEvent(new PopStateEvent('popstate')); }, roomB);
+  await expect(page.getByText(roomB, { exact: true })).toBeVisible();
+  releaseOld?.();
+  await page.waitForTimeout(150);
+  await expect(page.getByText(roomB, { exact: true })).toBeVisible();
+  await expect(page.getByText(code, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Loading the next scene/i)).toHaveCount(0);
+});
+
+test('editor never creates horizontal document overflow while content grows and shrinks', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  await page.goto('/host/games/new');
+  const measure = () => page.evaluate(() => ({ width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }));
+  for (let index = 0; index < 8; index += 1) await page.getByRole('button', { name: /Add question/ }).click();
+  expect((await measure()).scrollWidth).toBeLessThanOrEqual((await measure()).width);
+  for (let index = 0; index < 8; index += 1) await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  for (let index = 0; index < 8; index += 1) await page.getByRole('button', { name: /Add answer/ }).click();
+  const expanded = await measure();
+  expect(expanded.scrollWidth).toBeLessThanOrEqual(expanded.width);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight)).toBe(true);
 });
