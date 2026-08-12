@@ -16,17 +16,28 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "deploy": "npm run build && wrangler pages deploy"
+    "test:e2e": "playwright test",
+    "test:smoke": "node --env-file-if-exists=.env scripts/smoke-pages.mjs",
+    "check:functions": "node scripts/build-functions.mjs",
+    "check:bundle": "node --env-file-if-exists=.env scripts/scan-client-bundle.mjs",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run check:functions && npm run check:bundle && npm run test:e2e",
+    "supabase:apply": "node --env-file=.env scripts/apply-supabase.mjs",
+    "content:upload": "node --env-file=.env scripts/upload-demo-content.mjs",
+    "test:integration": "node --env-file=.env scripts/test-supabase.mjs",
+    "deploy": "npm run build && npm run check:functions && npm run check:bundle && wrangler pages deploy dist"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.54.0",
+    "qrcode.react": "4.2.0",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260811.1",
     "@eslint/js": "9.33.0",
+    "@playwright/test": "1.55.0",
     "@types/node": "24.2.1",
+    "@types/pngjs": "6.0.5",
     "@types/react": "19.1.10",
     "@types/react-dom": "19.1.7",
     "@vitejs/plugin-react": "4.7.0",
@@ -35,6 +46,8 @@
     "eslint-plugin-react-hooks": "5.2.0",
     "eslint-plugin-react-refresh": "0.4.20",
     "globals": "16.3.0",
+    "jsqr": "1.4.0",
+    "pngjs": "7.0.0",
     "typescript": "5.9.2",
     "typescript-eslint": "8.39.1",
     "vite": "7.3.6",

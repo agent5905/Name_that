@@ -14,9 +14,9 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify foundation
+    name: Verify release
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -44,3 +44,15 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Compile Pages Functions
+        run: npm run check:functions
+
+      - name: Scan public bundle
+        run: npm run check:bundle
+
+      - name: Install the locked browser revision
+        run: npx playwright install --with-deps chromium
+
+      - name: Test participant, host, and display journeys
+        run: npm run test:e2e

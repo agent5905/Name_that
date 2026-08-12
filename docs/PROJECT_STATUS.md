@@ -2,37 +2,46 @@
 
 ## Current state
 
-Foundation implemented: pinned React/TypeScript/Vite dependencies and npm runtime, tracked npm lockfile, strict type checking, ESLint, Vitest, GitHub Actions CI, Cloudflare Pages configuration, a minimal health Function, shared game-phase terminology, and environment/documentation contracts.
+Integrated participant, host-control, and shared-display product plus the authoritative Supabase/Cloudflare backend are implemented locally. Host credentials survive transient verification failures, private Broadcast accelerates updates, and HTTP snapshot polling/recovery remains authoritative.
 
 ## Verified
 
-Verified on 2026-08-11 with Node.js 24.18.0 and npm 11.16.0:
+Verified locally on 2026-08-11 with Node.js 24.18.0 and npm 11.16.0:
 
 - `npm run lint` - passed with zero warnings;
 - `npm run typecheck` - passed;
-- `npm test` - 12 tests passed;
+- `npm test` - 36 domain, recovery, API, and migration guards passed;
 - `npm run build` - passed with Vite 7.3.6 and no production source maps;
-- `npm audit` - zero known vulnerabilities;
-- `wrangler pages functions build` - health Function bundle compiled successfully.
+- `npm run check:functions` - all API Functions compiled successfully;
+- `npm run check:bundle` - public artifacts passed source-map and server-secret checks;
+- `npm run test:e2e` - 12 participant, host, and display browser journeys passed, including HTTP 500/network preservation and 401 host-session invalidation;
+- `npm run test:integration` - passed against the configured Supabase project, including private Broadcast delivery/forgery denial, RLS, Storage, randomized rounds, immutable answers, result math, and the transactional 100-player cap;
+- `npm run test:smoke` - passed through local Wrangler Pages/Functions against the live Supabase project, from health and room creation through protected portrait reveal and results; the exact test room was removed afterward;
+- independent mobile, host-control, shared-display, and backend/security reviews passed after their findings were fixed.
 
-CI is configured to repeat a clean install, lint, typecheck, tests, and build on pushes and pull requests. Its first hosted run remains pending until the workflow is pushed.
+## Backend delivered
 
-## Foundation decisions
+- Five-character collision-retried room codes are identifiers only. Random 256-bit host and participant credentials are distinct, and only SHA-256 hashes persist.
+- Joins, answers, and transitions are transactional security-definer RPCs. Room row locks serialize answer/lock races and a primary key enforces one immutable answer per player/round.
+- RLS is enabled everywhere and anon/authenticated cannot enumerate `room_snapshots`. Code-scoped private, receive-only Broadcast carries only revision invalidation; authoritative sanitized snapshots come from the Pages API.
+- The private `reveal-media` Storage bucket and phase/current-member endpoint protect bytes before reveal.
+- The authenticated host projection includes the current correct member and final-round indicator without adding either to the public pre-reveal snapshot.
+- Four fictional members and tracked WebP files have idempotent metadata/upload tooling.
+- Room creation requires at least four active employees; each round contains exactly four choices and always includes its correct employee.
+- Correct-member order and choice layout use database CSPRNG bytes per room. A locked 100-player join cap returns stable `ROOM_FULL` at the boundary.
+- RPC response parsers validate and allowlist create, join, answer, and host payloads before returning them.
+- Room creation is limited atomically to five attempts per hashed Cloudflare source in 15 minutes; rejected attempts persist and return `429` with `Retry-After`.
+- Opportunistic locked cleanup retains completed rooms for 12 hours and expires otherwise inactive room graphs after 24 hours, with no scheduler dependency.
 
-- npm 11.16.0 is declared exactly in `packageManager`; CI installs that version before `npm ci` to keep local and hosted dependency resolution aligned.
-- Production sourcemaps are disabled because Cloudflare Pages serves build artifacts publicly. Enable them only for a future error-reporting service that supports private map upload.
-- CI uses read-only repository permissions and runs each quality gate explicitly, so failures identify the broken layer.
+## External gates
 
-## Not yet implemented
+- Cloudflare deployment and deployed-origin smoke;
+- final critic sign-off after external gates.
 
-- participant, host, and shared-display product experiences;
-- Supabase migrations, RLS policies, and version-controlled game content;
-- room/session APIs, host authorization, idempotent answers, authoritative transitions;
-- realtime subscription and reconnect recovery;
-- integration, browser, security, visual, load, and deployed smoke tests;
-- Cloudflare/Supabase deployment setup and the first hosted GitHub Actions run.
+The versioned Supabase migrations and four private fictional portraits are applied to the configured `IceBreaker` project. The live integration suite cleaned its tagged Auth users, limiter rows, and rooms back to zero; the later Pages smoke also removed its exact room.
 
-## Risks / next decisions
+Cloudflare remains blocked: the configured API token returns API authentication error `10000`, and no Pages project name was supplied. No Pages project or production deployment was created. Replace the token with one scoped for Cloudflare Pages and set `CLOUDFLARE_PAGES_PROJECT_NAME`, then deploy and run a deployed-origin health/API/browser smoke.
 
-The host authorization and participant isolation design are the first security-critical decisions. No product backend should ship before those contracts and database policies receive adversarial review.
+## Risk
 
+The implementation is release-candidate quality, but do not call it deployed or production-ready until Cloudflare authentication succeeds, the Pages project is deployed with runtime secrets, and the deployed-origin smoke passes.

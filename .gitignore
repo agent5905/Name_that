@@ -5,6 +5,10 @@ node_modules/
 dist/
 coverage/
 .wrangler/
+_worker.bundle
+test-results/
+playwright-report/
+blob-report/
 *.tsbuildinfo
 
 # Local environment files (the example is intentionally tracked)

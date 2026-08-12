@@ -10,7 +10,10 @@
 
 `src/domain/` contains shared terminology only and must remain independent of React and infrastructure SDKs. Server-only values must never be imported by client modules.
 
-## Decisions not yet made
+## Authoritative backend decisions
 
-The persistence schema, row-level security policies, host credential format, participant session token format, transition command contract, realtime channel policy, and image/content pipeline must be designed and independently security-reviewed before implementation. Their future documentation belongs close to migrations and functions rather than in speculative detail here.
+PostgreSQL functions own every mutation and lock the room row to serialize answers with host transitions. Opaque host and participant tokens are independently generated; PostgreSQL stores only SHA-256 hashes. Participant hashes bind a credential to exactly one player and room. The room code is discovery data only.
 
+Private tables, including `room_snapshots`, expose no anon/authenticated policies. Pages Functions return a sanitized snapshot over HTTP as the reconnect source of truth. A code-scoped private Supabase Broadcast carries only `{ roomCode, version }` invalidation, never a row image. Realtime authorization permits receive-only access to exact room topics and restrictively denies client inserts. The API withholds the correct member and media until reveal, and aggregate results until the results phase. Reveal bytes live in a private Storage bucket and are streamed through a phase-checking Pages Function. See `docs/BACKEND.md` for the contract.
+
+Room creation admission is an atomic PostgreSQL fixed-window counter keyed only by a SHA-256 hash of Cloudflare's source-IP header. A separate opportunistic cleanup transaction bounds retained room graphs without requiring a scheduler: completed rooms retain a 12-hour recovery window and otherwise inactive rooms expire after 24 hours.

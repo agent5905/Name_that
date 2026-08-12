@@ -2,7 +2,7 @@
 
 A host-controlled realtime audience game for company icebreakers. The production target is Cloudflare Pages with Pages Functions and Supabase PostgreSQL/Realtime.
 
-The repository currently contains the verified application foundation. Product flows, persistence, authorization, and realtime behavior are intentionally not implemented yet.
+The repository contains integrated participant, host-control, and shared-display experiences plus the authoritative Supabase/Cloudflare backend. Private Realtime accelerates updates; authoritative HTTP snapshots recover missed events.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ The repository currently contains the verified application foundation. Product f
 2. Install exactly the locked dependency graph: `npm ci`.
 3. Start the frontend: `npm run dev`.
 
-For Pages Functions locally, run `npx wrangler pages dev dist` after `npm run build`. The health probe is available at `/api/health` in the Pages runtime.
+For production-equivalent Pages Functions, copy `.dev.vars.example` to `.dev.vars`, run `npm run build`, then `npx wrangler pages dev dist --port 8788`. Run `npm run test:smoke` in another shell; it requires the same server credentials in `.env` so it can delete its uniquely identified test room.
 
 ## Verification
 
@@ -24,18 +24,22 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run check:functions
+npm run check:bundle
+npm run test:e2e
 ```
 
-GitHub Actions runs the same checks after a clean `npm ci` on pushes and pull requests. Production source maps are intentionally disabled; public Pages artifacts should not expose original source unless a future private error-reporting workflow requires them.
+`npm run verify` runs the complete local gate. GitHub Actions repeats its stages after `npm ci` and installs the lockfile-matched Chromium revision. Production source maps are disabled, and the public bundle is scanned for server credentials.
 
 ## Project map
 
 - `src/domain/` — shared, environment-agnostic game vocabulary
 - `src/` — React client entry point
 - `functions/` — server-side Cloudflare Pages Functions; secrets belong here only
-- `docs/ARCHITECTURE.md` — intended system boundaries and decisions still pending
+- `docs/ARCHITECTURE.md` — system boundaries and authoritative-state design
+- `docs/BACKEND.md` — credentials, API contract, state machine, and content operations
 - `docs/TESTING.md` — verification layers and future gates
 - `docs/DEPLOYMENT.md` — Cloudflare deployment contract
 - `docs/PROJECT_STATUS.md` — concise handoff state
 
-Browser-exposed variables must begin with `VITE_`. Never expose `SUPABASE_SECRET_KEY`, management credentials, Cloudflare tokens, GitHub tokens, database passwords, or `HOST_SIGNING_SECRET` through Vite configuration or client code.
+Browser-exposed variables must begin with `VITE_`. Never expose `SUPABASE_SECRET_KEY`, management credentials, Cloudflare tokens, GitHub tokens, or database passwords through Vite configuration or client code. Private Realtime uses a persisted Supabase Anonymous Auth session, not an exposed signing key. Host and participant tokens are independently random; there is no shared host-signing secret.

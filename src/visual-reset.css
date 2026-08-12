@@ -1,0 +1,2 @@
+/* Keeps native controls legible across light/dark OS preferences. */
+button, input { color-scheme: light; }
