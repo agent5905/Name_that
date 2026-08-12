@@ -25,6 +25,7 @@
     "supabase:apply": "node --env-file=.env scripts/apply-supabase.mjs",
     "content:upload": "node --env-file=.env scripts/upload-demo-content.mjs",
     "test:integration": "node --env-file=.env scripts/test-supabase.mjs",
+    "test:lifecycle": "node --env-file=.env scripts/test-lifecycle.mjs",
     "cloudflare:configure": "node --env-file=.env scripts/configure-cloudflare.mjs",
     "deploy": "npm run build && npm run check:functions && npm run check:bundle && wrangler pages deploy dist"
   },

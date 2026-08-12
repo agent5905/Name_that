@@ -29,15 +29,29 @@ const configureAnonymousAuth = async () => {
   if (!response.ok) throw new Error(`Supabase Auth configuration failed (${response.status}).`);
 };
 
-const existing = await query("select exists(select 1 from pg_type where typname = 'game_phase') as applied");
-if (existing[0]?.applied) {
-  console.log('Authoritative game migration is already present; initial schema was not replayed.');
-} else {
-  await query(await readFile(new URL('../supabase/migrations/202608110001_authoritative_game.sql', import.meta.url), 'utf8'));
-  console.log('Applied authoritative game migration.');
+await query(`create table if not exists public.app_schema_migrations (
+  version text primary key, applied_at timestamptz not null default now()
+); revoke all on public.app_schema_migrations from public, anon, authenticated;`);
+const ordered = [
+  ['202608110001', '../supabase/migrations/202608110001_authoritative_game.sql'],
+  ['202608110002', '../supabase/migrations/202608110002_private_realtime_authorization.sql'],
+  ['202608110003', '../supabase/migrations/202608110003_saved_games_and_repeatable_sessions.sql'],
+  ['202608110004', '../supabase/migrations/202608110004_security_hardening.sql'],
+  ['202608110005', '../supabase/migrations/202608110005_media_reservations_and_gc.sql'],
+  ['202608110006', '../supabase/migrations/202608110006_aggregate_media_limits.sql'],
+  ['202608110007', '../supabase/migrations/202608110007_project_daily_budget_and_cleanup.sql'],
+  ['202608110008', '../supabase/migrations/202608110008_game_churn_and_atomic_budget.sql'],
+  ['202608110009', '../supabase/migrations/202608110009_atomic_game_budgets.sql'],
+];
+const initial = await query("select exists(select 1 from pg_type where typname='game_phase') as applied");
+if (initial[0]?.applied) await query("insert into public.app_schema_migrations(version) values('202608110001') on conflict do nothing");
+for (const [version, file] of ordered) {
+  const present = await query(`select exists(select 1 from public.app_schema_migrations where version='${version}') as applied`);
+  if (present[0]?.applied) { console.log(`Migration ${version} already applied.`); continue; }
+  const sql = await readFile(new URL(file, import.meta.url), 'utf8');
+  await query(`begin; ${sql}; insert into public.app_schema_migrations(version) values('${version}'); commit;`);
+  console.log(`Applied migration ${version}.`);
 }
-await query(await readFile(new URL('../supabase/migrations/202608110002_private_realtime_authorization.sql', import.meta.url), 'utf8'));
-console.log('Applied idempotent private Realtime authorization patch.');
 await configureAnonymousAuth();
 console.log('Enabled Anonymous Auth with a bounded 120 sign-ins/hour/IP limit.');
 await query(await readFile(new URL('../supabase/seed.sql', import.meta.url), 'utf8'));

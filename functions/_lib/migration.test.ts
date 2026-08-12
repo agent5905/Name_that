@@ -9,6 +9,14 @@ const realtimePatch = readFileSync(
   new URL('../../supabase/migrations/202608110002_private_realtime_authorization.sql', import.meta.url),
   'utf8',
 );
+const lifecycle = readFileSync(new URL('../../supabase/migrations/202608110003_saved_games_and_repeatable_sessions.sql',import.meta.url),'utf8');
+const hardening = readFileSync(new URL('../../supabase/migrations/202608110004_security_hardening.sql',import.meta.url),'utf8');
+const mediaGc = readFileSync(new URL('../../supabase/migrations/202608110005_media_reservations_and_gc.sql',import.meta.url),'utf8');
+const aggregateLimits = readFileSync(new URL('../../supabase/migrations/202608110006_aggregate_media_limits.sql',import.meta.url),'utf8');
+const projectBudget = readFileSync(new URL('../../supabase/migrations/202608110007_project_daily_budget_and_cleanup.sql',import.meta.url),'utf8');
+const churnHardening = readFileSync(new URL('../../supabase/migrations/202608110008_game_churn_and_atomic_budget.sql',import.meta.url),'utf8');
+const atomicGameBudgets = readFileSync(new URL('../../supabase/migrations/202608110009_atomic_game_budgets.sql',import.meta.url),'utf8');
+const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
   it('computes totals independently and emits one aggregate row per choice', () => {
@@ -101,5 +109,123 @@ describe('authoritative migration regression guards', () => {
     expect(migration).toContain("'correctEmployee', v_correct_employee");
     expect(migration).toContain("'isFinalRound', v_room.current_round is not null and v_room.current_round = v_round_count - 1");
     expect(migration).toContain('if v_room.host_token_hash <> decode(p_host_token_hash');
+  });
+});
+
+describe('saved-game lifecycle migration guards',()=>{
+  it('provides the composite choice key required by session answer integrity',()=>{
+    expect(lifecycle).toContain('unique (question_id, id)');
+    expect(lifecycle).toContain('foreign key (question_id, choice_id) references public.session_choices(question_id, id)');
+  });
+  it('recovers an idempotent created session even after its saved game is soft deleted',()=>{
+    const create=lifecycle.slice(lifecycle.indexOf('function public.create_game_session'),lifecycle.indexOf('function public.play_again_session'));
+    expect(create.indexOf('select * into v_existing')).toBeLessThan(create.indexOf('deleted_at is null for share'));
+    expect(create).toContain('select 1 from public.games where id=p_game_id and owner_id=v_owner');
+  });
+  it('copies both original and silhouette MIME types into each session snapshot',()=>{
+    expect(lifecycle).toContain('m.mime_type, m.silhouette_mime_type from public.game_questions');
+    expect(lifecycle).toContain('v_q.mime_type,v_q.silhouette_mime_type');
+  });
+  it('bounds saved-game, media, and live-session resource growth',()=>{
+    expect(lifecycle).toContain('create table public.saved_session_creation_limits');
+    expect(lifecycle).toContain('v_limit constant integer := 20');
+    expect(lifecycle).toContain("message='GAME_QUOTA_EXCEEDED'");
+    expect(lifecycle).toContain("message='MEDIA_QUOTA_EXCEEDED'");
+    expect(lifecycle).toContain("message='SESSION_QUOTA_EXCEEDED'");
+    expect(lifecycle).toContain("r.phase<>'complete')>=10");
+    expect(lifecycle).toContain("r.updated_at>now()-interval '24 hours')>=50");
+  });
+  it('allows media registration only on a live game owned by the credential',()=>{
+    const register=lifecycle.slice(lifecycle.indexOf('function public.register_game_media'),lifecycle.indexOf('function public.get_game_media'));
+    expect(register).toContain('owner_id = v_owner and deleted_at is null');
+  });
+  it('is additive and snapshots definition content independently of saved games',()=>{
+    expect(lifecycle).toContain('create table public.session_questions');
+    expect(lifecycle).toContain('create table public.session_choices');
+    expect(lifecycle).toContain("content_mode text not null default 'legacy'");
+    expect(lifecycle).toContain("values (p_code, decode(p_host_token_hash,'hex'), p_game_id, v_game.revision, v_game.name, p_idempotency_key, 'saved')");
+  });
+  it('supports every late-join state but rejects completed rooms distinctly under the room lock',()=>{
+    const join=lifecycle.slice(lifecycle.indexOf('function public.join_room'),lifecycle.indexOf('function public.submit_answer'));
+    expect(join.indexOf('where code=p_code for update')).toBeLessThan(join.indexOf("v_room.phase='complete'"));
+    expect(join).toContain("message='GAME_ENDED'");
+    expect(join).toContain("when v_room.phase='question_open' then v_room.current_round else v_room.current_round+1");
+  });
+  it('drives saved sessions through their session question count and only ends on final results',()=>{
+    expect(lifecycle).toContain("if v_room.content_mode='saved' then select max(position) into v_last");
+    expect(lifecycle).toContain("v_room.phase<>'results_displayed' or v_room.current_round<>v_last");
+  });
+  it('uses ordered recorded migration application without falsely marking patch 002',()=>{
+    expect(applyScript.indexOf("['202608110001'")).toBeLessThan(applyScript.indexOf("['202608110002'"));
+    expect(applyScript.indexOf("['202608110002'")).toBeLessThan(applyScript.indexOf("['202608110003'"));
+    expect(applyScript.indexOf("['202608110003'")).toBeLessThan(applyScript.indexOf("['202608110004'"));
+    expect(applyScript.indexOf("['202608110004'")).toBeLessThan(applyScript.indexOf("['202608110005'"));
+    expect(applyScript.indexOf("['202608110005'")).toBeLessThan(applyScript.indexOf("['202608110006'"));
+    expect(applyScript.indexOf("['202608110006'")).toBeLessThan(applyScript.indexOf("['202608110007'"));
+    expect(applyScript.indexOf("['202608110007'")).toBeLessThan(applyScript.indexOf("['202608110008'"));
+    expect(applyScript.indexOf("['202608110008'")).toBeLessThan(applyScript.indexOf("['202608110009'"));
+    expect(applyScript).toContain("values('202608110001') on conflict");
+    expect(applyScript).not.toContain("values('202608110001'),('202608110002')");
+  });
+  it('authenticates and bounds image processing while recovering quota after stale saves',()=>{
+    expect(hardening).toContain('create table public.media_upload_limits');
+    expect(hardening).toContain('v_limit constant integer := 100');
+    expect(hardening).toContain('v_owner := public.admin_owner_id(p_admin_token_hash)');
+    expect(hardening).toContain("m.created_at>now()-interval '24 hours'");
+    expect(hardening).toContain('exists(select 1 from public.game_questions q where q.media_asset_id=m.id)');
+    expect(hardening).toContain('from public, anon, authenticated');
+  });
+  it('reserves every object before upload and only reclaims definition-and-session orphans',()=>{
+    expect(mediaGc).toContain("values(v_owner,p_game_id,p_storage_path,p_silhouette_storage_path,p_mime_type,p_silhouette_mime_type,p_byte_size,'pending')");
+    expect(mediaGc).toContain("set upload_state='ready'");
+    expect(mediaGc).toContain("m.upload_state='pending' and m.created_at<now()-interval '1 hour'");
+    expect(mediaGc).toContain('where sq.media_path=m.storage_path or sq.silhouette_media_path=m.silhouette_storage_path');
+    expect(mediaGc).toContain("active.deleted_at is null");
+    expect(mediaGc).toContain('delete from public.game_questions where game_id=p_game_id');
+    expect(mediaGc).toContain('p_media_ids uuid[]');
+  });
+  it('prevents owner rotation from multiplying source and project media allowances',()=>{
+    expect(aggregateLimits).toContain('create table public.admin_profile_creation_limits');
+    expect(aggregateLimits).toContain('create table public.media_source_upload_limits');
+    expect(aggregateLimits).toContain('create table public.media_source_byte_limits');
+    expect(aggregateLimits).toContain('v_limit constant integer:=30');
+    expect(aggregateLimits).toContain('v_limit constant bigint:=262144000');
+    expect(aggregateLimits).toContain("pg_advisory_xact_lock(hashtextextended('game-media-project-quota',0))");
+    expect(aggregateLimits).toContain('sum(byte_size+65536::bigint)');
+    expect(aggregateLimits).toContain('>=10000');
+    expect(aggregateLimits).toContain('>5368709120');
+  });
+  it('bounds cross-source daily growth, reserves headroom, and prunes stale identities and counters',()=>{
+    expect(projectBudget).toContain('create table public.project_media_daily_budget');
+    expect(projectBudget).toContain('v_limit constant bigint:=536870912');
+    expect(projectBudget).toContain("pg_advisory_xact_lock(hashtextextended('game-media-project-daily-budget',0))");
+    expect(projectBudget).toContain('>4294967296');
+    expect(projectBudget).toContain('>=8000');
+    expect(projectBudget).toContain("window_started_at<now()-interval '3 days'");
+    expect(projectBudget).toContain("last_seen_at<now()-interval '30 days'");
+    expect(projectBudget).toContain('not exists(select 1 from public.games g where g.owner_id=a.id)');
+    expect(projectBudget).toContain('not exists(select 1 from public.game_media_assets m where m.owner_id=a.id)');
+  });
+  it('bounds draft churn, purges only unreferenced deleted games, and charges media atomically',()=>{
+    expect(churnHardening).toContain('create table public.game_mutation_limits');
+    expect(churnHardening).toContain('v_limit constant integer:=200');
+    expect(churnHardening).toContain("pg_advisory_xact_lock(hashtextextended('saved-game-project-quota',0))");
+    expect(churnHardening).toContain("count(*) from public.games)>=10000");
+    expect(churnHardening).toContain("count(*) from public.games where owner_id=v_owner)>=200");
+    expect(churnHardening).toContain("g.deleted_at<now()-interval '1 day'");
+    expect(churnHardening).toContain('not exists(select 1 from public.rooms r where r.game_id=g.id)');
+    const register=churnHardening.slice(churnHardening.indexOf('function public.register_game_media'),churnHardening.indexOf('function public.cleanup_stale_studio_state'));
+    expect(register.indexOf('MEDIA_QUOTA_EXCEEDED')).toBeLessThan(register.indexOf('reserve_project_media_bytes'));
+    expect(register.indexOf('reserve_project_media_bytes')).toBeLessThan(register.indexOf('insert into public.game_media_assets'));
+  });
+  it('charges source and project game budgets inside successful mutation transactions',()=>{
+    expect(atomicGameBudgets).toContain('create table public.game_source_daily_budgets');
+    expect(atomicGameBudgets).toContain('create table public.game_project_daily_budget');
+    expect(atomicGameBudgets).toContain('v_source_limit constant integer:=100');
+    expect(atomicGameBudgets).toContain('v_project_limit constant integer:=1000');
+    expect(atomicGameBudgets).toContain("pg_advisory_xact_lock(hashtextextended('saved-game-daily-project-budget',0))");
+    expect(atomicGameBudgets).toContain('perform public.admit_game_mutation(p_source_hash)');
+    expect(atomicGameBudgets).toContain("count(*)from public.games)>=8000");
+    expect(atomicGameBudgets).toContain("delete from public.game_source_daily_budgets where window_started_at<now()-interval '2 days'");
   });
 });

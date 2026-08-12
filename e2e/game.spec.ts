@@ -20,6 +20,17 @@ const choices = [
   { id: ids.mateo, displayName: 'Mateo Alvarez', position: 3 },
 ];
 
+function rasterFixture(width: number, height: number, brightness: number) {
+  const png = new PNG({ width, height });
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const offset = (y * width + x) * 4;
+    const variation = Math.round(28 * Math.sin(x / Math.max(1, width / 8)) * Math.cos(y / Math.max(1, height / 7)));
+    const value = Math.max(0, Math.min(255, brightness + variation));
+    png.data[offset] = value; png.data[offset + 1] = Math.max(0, value - 5); png.data[offset + 2] = Math.min(255, value + 8); png.data[offset + 3] = 255;
+  }
+  return PNG.sync.write(png);
+}
+
 function snapshot(phase: string, mediaAvailable = false) {
   return {
     roomCode: code,
@@ -27,6 +38,7 @@ function snapshot(phase: string, mediaAvailable = false) {
     roundIndex: phase === 'lobby' ? null : 2,
     roundCount: 3,
     connectedParticipantCount: 18,
+    eligibleParticipantCount: 18,
     submittedAnswerCount: phase === 'question_open' ? 12 : 18,
     version: 7,
     choices,
@@ -40,7 +52,7 @@ function snapshot(phase: string, mediaAvailable = false) {
   };
 }
 
-async function mockGame(page: Page, phase: string, options: { mediaAvailable?: boolean; participantAnswer?: string | null } = {}) {
+async function mockGame(page: Page, phase: string, options: { mediaAvailable?: boolean; participantAnswer?: string | null; eligibleParticipantCount?: number } = {}) {
   await page.route('**/api/rooms/**', async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith(`/media/${ids.priya}`)) {
@@ -52,14 +64,14 @@ async function mockGame(page: Page, phase: string, options: { mediaAvailable?: b
       return;
     }
     if (url.pathname.endsWith('/snapshot')) {
-      await route.fulfill({ json: { snapshot: snapshot(phase, options.mediaAvailable), participant: { playerId: ids.player, answerEmployeeId: options.participantAnswer ?? null } } });
+      await route.fulfill({ json: { snapshot: { ...snapshot(phase, options.mediaAvailable), eligibleParticipantCount: options.eligibleParticipantCount ?? 18 }, participant: { playerId: ids.player, answerEmployeeId: options.participantAnswer ?? null } } });
       return;
     }
     if (url.pathname.endsWith('/join')) {
       await route.fulfill({ status: 201, json: { participant: { playerId: ids.player, roomId: ids.room, displayName: 'Alex Rivera' }, participantToken: 'x'.repeat(43) } });
       return;
     }
-    await route.fulfill({ json: { snapshot: snapshot(phase, options.mediaAvailable) } });
+    await route.fulfill({ json: { snapshot: { ...snapshot(phase, options.mediaAvailable), eligibleParticipantCount: options.eligibleParticipantCount ?? 18 } } });
   });
 }
 
@@ -90,9 +102,9 @@ test('join flow fits 360x800 and persists a session', async ({ page }, testInfo)
   await mockGame(page, 'lobby');
   await page.goto(`/join/${code}`);
   expect((await page.getByRole('link', { name: 'Name That Team Member' }).boundingBox())?.height).toBeGreaterThanOrEqual(48);
-  await page.getByLabel('Your display name').fill('Alex Rivera');
+  await page.getByLabel('Display name').fill('Alex Rivera');
   await page.screenshot({ path: testInfo.outputPath('participant-join-360.png'), fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: /Enter game/ }).click();
+  await page.getByRole('button', { name: /I’m ready/ }).click();
   await expect(page).toHaveURL(new RegExp(`/play/${code}$`));
   await expect.poll(() => page.evaluate(() => localStorage.getItem('name-that:participant'))).not.toBeNull();
 });
@@ -127,7 +139,7 @@ test('host sees the private answer and finishes the final round', async ({ page 
   }, { codeValue: code, idValues: ids });
   await mockGame(page, 'results_displayed');
   await page.goto(`/host/${code}`);
-  await expect(page.getByText('Correct answer')).toBeVisible();
+  await expect(page.getByText('Host answer')).toBeVisible();
   await expect(page.getByText('Priya Shah').first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Finish game/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('host-final-round-1440.png'), fullPage: true, animations: 'disabled' });
@@ -165,8 +177,8 @@ test('host question control exposes progress, private answer, and guarded next a
   await mockGame(page, 'question_open');
   await page.goto(`/host/${code}`);
   await expect(page.getByRole('button', { name: /Lock answers/ })).toBeVisible();
-  await expect(page.getByText('Correct answer')).toBeVisible();
-  await expect(page.getByText('12 / 18')).toBeVisible();
+  await expect(page.getByText('Host answer')).toBeVisible();
+  await expect(page.getByText('12/18')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('host-question-1440.png'), fullPage: true, animations: 'disabled' });
 });
 
@@ -238,7 +250,7 @@ test('definitive host authorization rejection clears the unusable session', asyn
     await route.fulfill({ json: { snapshot: snapshot('question_open') } });
   });
   await page.goto(`/host/${code}`);
-  await expect(page.getByRole('heading', { name: 'Bring your team together.' })).toBeVisible();
+  await expect(page).toHaveURL(/\/host$/);
   expect(await page.evaluate(() => localStorage.getItem('name-that:host'))).toBeNull();
 });
 
@@ -247,6 +259,7 @@ test('display question, locked, and portrait reveal states fit 1280x720', async 
     ['question_open', 'display-question-1280.png'],
     ['answers_locked', 'display-locked-1280.png'],
     ['employee_revealed', 'display-reveal-portrait-1280.png'],
+    ['complete', 'display-complete-1280.png'],
   ] as const) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await mockGame(page, phase, { mediaAvailable: phase === 'employee_revealed' });
@@ -260,4 +273,136 @@ test('display question, locked, and portrait reveal states fit 1280x720', async 
     await page.screenshot({ path: testInfo.outputPath(filename), fullPage: true, animations: 'disabled' });
     await page.close();
   }
+});
+
+test('saved game library reads as a game collection and hosts with an idempotent operation', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  let sessionBody: { hostToken?: string; idempotencyKey?: string } | null = null;
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/sessions')) {
+      sessionBody = route.request().postDataJSON() as { hostToken?: string; idempotencyKey?: string };
+      await route.fulfill({ json: { room: { roomId: ids.room, code, gameId: 'game-1', gameRevision: 3, gameName: 'Summer Team Ice Breaker' }, hostToken: sessionBody.hostToken } });
+      return;
+    }
+    if (url.pathname.endsWith('/host')) { await route.fulfill({ json: { host: { roomId: ids.room, code, phase: 'lobby', currentRound: null, roundCount: 5, isFinalRound: false, correctEmployee: null, version: 1, gameId: 'game-1', gameName: 'Summer Team Ice Breaker' } } }); return; }
+    if (url.pathname.endsWith('/snapshot')) { await route.fulfill({ json: { snapshot: { ...snapshot('lobby'), roundCount: 5 } } }); return; }
+    await route.fulfill({ json: { games: [{ id: 'game-1', name: 'Summer Team Ice Breaker', revision: 3, questionCount: 5, updatedAt: '2026-08-11T20:00:00Z' }] } });
+  });
+  await page.goto('/host');
+  await expect(page.getByRole('heading', { name: 'Pick the next mystery.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Summer Team Ice Breaker' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('game-library-1440.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: /Host now/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/host/${code}$`));
+  expect(sessionBody).not.toBeNull();
+  expect(sessionBody!.hostToken).toHaveLength(43);
+  expect(sessionBody!.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+});
+
+test('editor supports variable answers, image silhouette preview, question ordering, and the two-step save', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  const requests: string[] = [];
+  let uploadedMultipart = '';
+  await page.route('**/api/**', async (route) => {
+    const request = route.request(); const url = new URL(request.url()); requests.push(`${request.method()} ${url.pathname}`);
+    if (url.pathname.endsWith('/media')) { uploadedMultipart = request.postDataBuffer()?.toString('latin1') ?? ''; await route.fulfill({ json: { media: { id: 'media-1', mimeType: 'image/png', previewUrl: '/api/games/game-1/media/media-1' } } }); return; }
+    if (request.method() === 'POST' && url.pathname === '/api/games') { await route.fulfill({ json: { game: { id: 'game-1', name: 'Summer Team Ice Breaker', revision: 1, questions: [] } } }); return; }
+    if (request.method() === 'PUT') {
+      const body = request.postDataJSON() as { name: string; questions: Array<Record<string, unknown>> };
+      await route.fulfill({ json: { game: { id: 'game-1', name: body.name, revision: 2, questions: body.questions } } }); return;
+    }
+    await route.fulfill({ json: { games: [] } });
+  });
+  await page.goto('/host/games/new');
+  await page.getByLabel('Game name').fill('Summer Team Ice Breaker');
+  await page.getByLabel('Employee / reveal name').fill('Priya Shah');
+  await page.getByRole('textbox', { name: 'Answer 1' }).fill('Priya Shah');
+  await page.getByRole('textbox', { name: 'Answer 2' }).fill('Maya Chen');
+  await page.getByRole('button', { name: /Add answer/ }).click();
+  await page.getByRole('textbox', { name: 'Answer 3' }).fill('Jordan Brooks');
+  await page.locator('input[type=file]').setInputFiles(resolve('content/portraits/priya-shah.webp'));
+  await expect(page.getByRole('img', { name: 'Employee preview' })).toBeVisible();
+  await expect(page.getByText(/flattened two-tone silhouette/i)).toBeVisible();
+  await page.getByRole('button', { name: 'Reveal', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Portrait of Priya Shah' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('game-editor-1600.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: /Save game/ }).click();
+  await expect.poll(() => requests.join('|')).toContain('PUT /api/games/game-1');
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  expect(requests).toEqual(expect.arrayContaining(['POST /api/games', 'POST /api/games/game-1/media', 'PUT /api/games/game-1']));
+  expect(uploadedMultipart).toContain('name="file"');
+  expect(uploadedMultipart).toContain('filename="priya-shah-normalized.png"');
+  expect(uploadedMultipart).toContain('Content-Type: image/png');
+  expect(uploadedMultipart).not.toContain('name="silhouette"');
+});
+
+test('late joiners do not depress current-round answer progress', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await mockGame(page, 'question_open', { eligibleParticipantCount: 12 });
+  await page.goto(`/display/${code}`);
+  await expect(page.getByText('12 / 12')).toBeVisible();
+  await expect(page.getByText(/eligible answers locked in/i)).toBeVisible();
+});
+
+test('local silhouette preview survives bright, dark, portrait, and landscape source images', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  await page.goto('/host/games/new');
+  const input = page.locator('input[type=file]');
+  for (const fixture of [
+    { name: 'bright-landscape.png', width: 640, height: 320, brightness: 225 },
+    { name: 'dark-landscape.png', width: 640, height: 320, brightness: 38 },
+    { name: 'bright-portrait.png', width: 320, height: 640, brightness: 220 },
+    { name: 'dark-portrait.png', width: 320, height: 640, brightness: 42 },
+  ]) {
+    await input.setInputFiles({ name: fixture.name, mimeType: 'image/png', buffer: rasterFixture(fixture.width, fixture.height, fixture.brightness) });
+    const preview = page.locator('.preview-stage .chamber-photo img');
+    await expect(preview).toBeVisible();
+    const decoded = PNG.sync.read(await preview.screenshot());
+    let dark = 0; let cyan = 0;
+    for (let offset = 0; offset < decoded.data.length; offset += 4) {
+      const red = decoded.data[offset] ?? 0; const green = decoded.data[offset + 1] ?? 0; const blue = decoded.data[offset + 2] ?? 0;
+      if (red < 45 && green < 55 && blue < 70) dark += 1;
+      if (red < 120 && green > 145 && blue > 145) cyan += 1;
+    }
+    const pixels = decoded.width * decoded.height;
+    expect(dark / pixels, fixture.name).toBeGreaterThan(.05);
+    expect(cyan / pixels, fixture.name).toBeGreaterThan(.05);
+  }
+});
+
+test('reveal is immediate and never opens a routine confirmation dialog', async ({ page }) => {
+  await page.addInitScript(({ codeValue, idValues }) => localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, token: 'h'.repeat(43) })), { codeValue: code, idValues: ids });
+  await mockGame(page, 'answers_locked');
+  let dialogs = 0; page.on('dialog', async (dialog) => { dialogs += 1; await dialog.dismiss(); });
+  await page.goto(`/host/${code}`);
+  await page.getByRole('button', { name: /Reveal teammate/ }).click();
+  expect(dialogs).toBe(0);
+});
+
+test('play again retries with the same host token and idempotency key', async ({ page }) => {
+  await page.addInitScript(({ codeValue, idValues }) => localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, gameId: 'game-1', gameName: 'Summer Team Ice Breaker', token: 'h'.repeat(43) })), { codeValue: code, idValues: ids });
+  const bodies: Array<{ hostToken: string; idempotencyKey: string }> = [];
+  await page.route('**/api/rooms/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/host')) { const replayed=url.pathname.includes('N8W2Q');await route.fulfill({ json: { host: { roomId: replayed?'new-room':ids.room, code: replayed?'N8W2Q':code, phase: replayed?'lobby':'complete', currentRound: replayed?null:2, roundCount: 3, isFinalRound: !replayed, correctEmployee: null, version: 9, gameId: 'game-1', gameName: 'Summer Team Ice Breaker' } } }); return; }
+    if (url.pathname.endsWith('/snapshot')) { await route.fulfill({ json: { snapshot: snapshot(url.pathname.includes('N8W2Q')?'lobby':'complete') } }); return; }
+    if (url.pathname.endsWith('/play-again')) {
+      bodies.push(route.request().postDataJSON() as { hostToken: string; idempotencyKey: string });
+      if (bodies.length === 1) { await route.fulfill({ status: 500, json: { error: { code: 'TEMPORARY_FAILURE', message: 'Try again.' } } }); return; }
+      await route.fulfill({ json: { room: { roomId: 'new-room', code: 'N8W2Q', gameId: 'game-1', gameRevision: 3, gameName: 'Summer Team Ice Breaker' }, hostToken: bodies[1]?.hostToken } }); return;
+    }
+    await route.fulfill({ json: {} });
+  });
+  await page.goto(`/host/${code}`);
+  await page.getByRole('button', { name: /Play again/ }).click();
+  await expect(page.getByText('Try again.')).toBeVisible();
+  await page.getByRole('button', { name: /Play again/ }).click();
+  await expect(page).toHaveURL(/\/host\/N8W2Q$/);
+  await expect(page.getByRole('button', { name: /Start round/ })).toBeEnabled();
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toEqual(bodies[0]);
 });

@@ -41,18 +41,22 @@ export interface GameSnapshot {
   readonly roundIndex: number | null;
   readonly roundCount: number;
   readonly connectedParticipantCount: number;
+  readonly eligibleParticipantCount?: number;
   readonly submittedAnswerCount: number;
   readonly version: number;
   readonly choices: readonly Choice[];
   readonly revealedEmployee: RevealedEmployee | null;
   readonly results: GameResults | null;
   readonly updatedAt: string;
+  readonly prompt?: string;
+  readonly silhouetteUrl?: string | null;
 }
 
 export interface Participant {
   readonly playerId: string;
   readonly roomId: string;
   readonly displayName: string;
+  readonly eligibleFromRound?: number;
 }
 
 export interface ParticipantSnapshot {
@@ -69,6 +73,9 @@ export interface HostRoom {
   readonly isFinalRound: boolean;
   readonly correctEmployee: { readonly id: string; readonly displayName: string; readonly team: string | null } | null;
   readonly version: number;
+  readonly gameId?: string | null;
+  readonly gameRevision?: number | null;
+  readonly gameName?: string | null;
 }
 
 export function isGamePhase(value: unknown): value is GamePhase {

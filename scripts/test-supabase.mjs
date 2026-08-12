@@ -265,7 +265,8 @@ try {
   assert(snapshot.data.revealed_employee?.id, 'correct identity should appear at reveal');
   assert.equal(snapshot.data.results, null);
   const path = await rpc('reveal_media_path', { p_code: roomCode, p_member_id: snapshot.data.revealed_employee.id });
-  assert.match(path, /^portraits\/.*\.webp$/);
+  assert.match(path.storagePath, /^portraits\/.*\.webp$/);
+  assert.equal(path.mimeType, 'image/webp');
   await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'show_results' });
   snapshot = await admin.from('room_snapshots').select('*').eq('room_code', roomCode).single();
   assert.equal(snapshot.data.results.totalAnswers, 1);

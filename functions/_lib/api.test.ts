@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ApiError, bearerToken, displayName, json, newRoomCode, newToken, normalizeSnapshot,
   parseCleanupRealtimeAuth, parseCleanupRooms, parseCreatedRoom, parseHostRoom, parseJoinedParticipant,
-  parseRoomCreationLimit, parseSubmittedAnswer, readJson, requireAction, roomCode,
+  parseMediaByteLimit, parseRoomCreationLimit, parseSubmittedAnswer, readJson, requireAction, roomCode,
   roomCreationSourceHash, throwRpcError, tokenHash, uuid,
 } from './api';
 
@@ -59,6 +59,11 @@ describe('credential primitives and service errors', () => {
     for (let index = 0; index < 100; index += 1) expect(newRoomCode()).toMatch(/^[A-HJ-NP-Z2-9]{5}$/);
   });
 
+  it('validates the aggregate source byte gate without trusting malformed counters',()=>{
+    expect(parseMediaByteLimit({allowed:true,limitBytes:262144000,remainingBytes:100,retryAfterSeconds:0})).toEqual({allowed:true,limitBytes:262144000,remainingBytes:100,retryAfterSeconds:0});
+    expect(()=>parseMediaByteLimit({allowed:true,limitBytes:1,remainingBytes:0,retryAfterSeconds:0})).toThrow();
+  });
+
   it('maps known database markers without leaking unknown details', () => {
     try {
       throwRpcError({ message: 'HOST_UNAUTHORIZED secret detail' });
@@ -80,7 +85,8 @@ describe('credential primitives and service errors', () => {
   it('allowlists and validates every private RPC response shape', () => {
     const id = '550e8400-e29b-41d4-a716-446655440000';
     expect(parseCreatedRoom({ roomId: id, code: 'AH2Z9', secret: 'drop' })).toEqual({ roomId: id, code: 'AH2Z9' });
-    expect(parseJoinedParticipant({ playerId: id, roomId: id, displayName: 'Ada', hash: 'drop' })).toEqual({ playerId: id, roomId: id, displayName: 'Ada' });
+    expect(parseJoinedParticipant({ playerId: id, roomId: id, displayName: 'Ada', eligibleFromRound: 0, hash: 'drop' })).toEqual({ playerId: id, roomId: id, displayName: 'Ada', eligibleFromRound: 0 });
+    expect(() => parseJoinedParticipant({ playerId: id, roomId: id, displayName: 'Ada', eligibleFromRound: -1 })).toThrow();
     expect(parseSubmittedAnswer({ accepted: true, idempotent: false, employeeId: id, rawVote: 'drop' })).toEqual({ accepted: true, idempotent: false, employeeId: id });
     expect(parseHostRoom({
       roomId: id, code: 'AH2Z9', phase: 'question_open', currentRound: 0,
@@ -99,6 +105,8 @@ describe('credential primitives and service errors', () => {
   it('allowlists limiter and cleanup responses and supports Retry-After', () => {
     expect(parseRoomCreationLimit({ allowed: false, limit: 5, remaining: 0, retryAfterSeconds: 120, internal: 'drop' }))
       .toEqual({ allowed: false, limit: 5, remaining: 0, retryAfterSeconds: 120 });
+    expect(parseRoomCreationLimit({ allowed: true, limit: 20, remaining: 19, retryAfterSeconds: 0 },20))
+      .toEqual({ allowed: true, limit: 20, remaining: 19, retryAfterSeconds: 0 });
     expect(parseCleanupRooms({ deletedRooms: 2, deletedSnapshots: 2, ids: ['drop'] }))
       .toEqual({ deletedRooms: 2, deletedSnapshots: 2 });
     expect(parseCleanupRealtimeAuth({ deletedUsers: 3, ids: ['drop'] }))
@@ -115,8 +123,14 @@ describe('credential primitives and service errors', () => {
 
 describe('sanitized API snapshot shape', () => {
   it('normalizes only the sanctioned columns', () => {
-    const snapshot = normalizeSnapshot({ room_code: 'ABCDE', phase: 'lobby', host_token_hash: 'never', results: null });
+    const snapshot = normalizeSnapshot({
+      room_code: 'ABCDE', phase: 'lobby', host_token_hash: 'never', results: null,
+      prompt: 'Name this mystery teammate', silhouette_url: '/api/rooms/ABCDE/silhouette',
+    });
     expect(snapshot).not.toHaveProperty('host_token_hash');
-    expect(snapshot).toMatchObject({ roomCode: 'ABCDE', phase: 'lobby', results: null });
+    expect(snapshot).toMatchObject({
+      roomCode: 'ABCDE', phase: 'lobby', results: null,
+      prompt: 'Name this mystery teammate', silhouetteUrl: '/api/rooms/ABCDE/silhouette',
+    });
   });
 });
