@@ -2,6 +2,8 @@
 
 A host-controlled realtime audience game for company icebreakers. The production target is Cloudflare Pages with Pages Functions and Supabase PostgreSQL/Realtime.
 
+Production: https://name-that-team-member.pages.dev
+
 The repository contains integrated participant, host-control, and shared-display experiences plus the authoritative Supabase/Cloudflare backend. Private Realtime accelerates updates; authoritative HTTP snapshots recover missed events.
 
 ## Requirements

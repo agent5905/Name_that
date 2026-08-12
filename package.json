@@ -18,12 +18,14 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:smoke": "node --env-file-if-exists=.env scripts/smoke-pages.mjs",
+    "test:smoke:browser": "node --env-file=.env scripts/smoke-browser.mjs",
     "check:functions": "node scripts/build-functions.mjs",
     "check:bundle": "node --env-file-if-exists=.env scripts/scan-client-bundle.mjs",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run check:functions && npm run check:bundle && npm run test:e2e",
     "supabase:apply": "node --env-file=.env scripts/apply-supabase.mjs",
     "content:upload": "node --env-file=.env scripts/upload-demo-content.mjs",
     "test:integration": "node --env-file=.env scripts/test-supabase.mjs",
+    "cloudflare:configure": "node --env-file=.env scripts/configure-cloudflare.mjs",
     "deploy": "npm run build && npm run check:functions && npm run check:bundle && wrangler pages deploy dist"
   },
   "dependencies": {

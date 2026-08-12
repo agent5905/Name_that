@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
 
 const baseUrl = new URL(process.env.SMOKE_BASE_URL ?? 'http://127.0.0.1:8788');
+const localHost = baseUrl.hostname === '127.0.0.1' || baseUrl.hostname === 'localhost';
+const approvedRemoteHost = process.env.SMOKE_ALLOW_REMOTE === 'true'
+  && process.env.SMOKE_EXPECTED_HOST === baseUrl.hostname;
 assert(
-  baseUrl.hostname === '127.0.0.1' || baseUrl.hostname === 'localhost',
-  'The Pages smoke is intentionally local-only. Set SMOKE_BASE_URL to a local Wrangler address.',
+  localHost || approvedRemoteHost,
+  'Remote smoke requires SMOKE_ALLOW_REMOTE=true and SMOKE_EXPECTED_HOST to exactly match SMOKE_BASE_URL.',
 );
 const cleanupUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
 assert(cleanupUrl, 'SUPABASE_URL is required so the smoke can remove its test room.');
@@ -27,6 +30,11 @@ async function request(path, { method = 'GET', token, body, expectedStatus = 200
   if (responseType === 'bytes') return { response, body: await response.arrayBuffer() };
   return { response, body: await response.json() };
 }
+
+const appShell = await fetch(baseUrl);
+assert.equal(appShell.status, 200, 'The deployed client shell must load.');
+assert.match(appShell.headers.get('content-type') ?? '', /text\/html/);
+assert.match(await appShell.text(), /<div id="root"><\/div>/);
 
 const health = await request('/api/health');
 assert.deepEqual(health.body, { status: 'ok', service: 'name-that-team-member' });
@@ -113,7 +121,7 @@ assert.equal(results.body.snapshot.phase, 'results_displayed');
 assert.equal(results.body.snapshot.results.totalAnswers, 1);
 assert.equal(results.body.snapshot.results.choices.reduce((sum, choice) => sum + choice.count, 0), 1);
 
-console.log(`Local Pages HTTP smoke passed for room ${code} (health, auth, state, idempotency, media secrecy, reveal, and results).`);
+console.log(`${localHost ? 'Local' : 'Deployed'} Pages HTTP smoke passed for room ${code} (health, auth, state, idempotency, media secrecy, reveal, and results).`);
 } finally {
   if (cleanupRoom) {
     const snapshotCleanup = await cleanupClient.from('room_snapshots').delete().eq('room_code', cleanupRoom.code);
