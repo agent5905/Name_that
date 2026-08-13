@@ -71,6 +71,8 @@ For the exact 100-client window, Supabase Management logs again showed 0 edge 5x
 
 The first and only 175-client run passed: 175/175 joined, all 525 logical answers resolved (524 accepted and one valid `ANSWERS_CLOSED` at the Lock boundary), and all 18 reconnect clients recovered identity and idempotent answer state. Delivery had zero misses across 2,266 transition messages, zero same-phase events, zero malformed events/channel errors, and a worst participant transition of 336.0 ms. The exact window again had 0 Supabase edge 5xx and 0 Realtime log events; 55 `P0001` exceptions exactly match 54 immutable duplicate-choice probes plus the one expected Lock-boundary rejection.
 
+The final browser instrumentation was validated separately with the passing [`browser-smoke/5-client.json`](capacity-results/browser-smoke/5-client.json). One real 1440×900 host context drove all 13 controls and one real 1280×720 display context rendered every phase and decoded the tiny Mystery/Reveal images. Host phase UI max was 1,091.9 ms; display phase UI max was 496.2 ms. There were no console/page/unexpected request/5xx errors. Thirteen `ERR_ABORTED` requests were the expected cancellation of stale HTTP recovery when a newer phase push won; they are recorded separately from failures. A prior nondeterministic smoke with four same-phase notifications is retained as a failure; the subsequent instrumented run had zero, and the 225 rehearsal retains a strict zero gate rather than waiving it.
+
 ## Hard pass/fail gates
 
 A stage fails if any of the following occurs:
