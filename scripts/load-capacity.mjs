@@ -331,7 +331,7 @@ class Metrics {
   answerLatencies = [];
   joins = { attempted: 0, successful: 0, failed: 0, idempotentRetries: 0, retryFailures: 0 };
   answers = { logicalAttempted: 0, httpAttempted: 0, successful: 0, closedAtLock: 0, failed: 0, idempotentDuplicates: 0, immutableDuplicates: 0, duplicateProbeFailures: 0, acceptedByRound: {} };
-  realtime = { subscribed: 0, peakSubscribed: 0, inboundEvents: 0, samePhaseEvents: 0, invalidEvents: 0, channelErrors: 0, maxChannelsPerClient: 0 };
+  realtime = { subscribed: 0, peakSubscribed: 0, inboundEvents: 0, samePhaseEvents: 0, samePhaseSamples: [], invalidEvents: 0, channelErrors: 0, maxChannelsPerClient: 0 };
   reconnect = { attempted: 0, successful: 0, failed: 0, identityRecovered: 0, idempotentResubmits: 0 };
   snapshot = { successful: 0, failed: 0 };
   errors = {};
@@ -498,7 +498,19 @@ class ParticipantClient {
       this.metrics.error('REALTIME_INVALID_EVENT');
       return;
     }
-    if (payload.phase === this.currentSnapshot?.phase) this.metrics.realtime.samePhaseEvents += 1;
+    if (payload.phase === this.currentSnapshot?.phase) {
+      this.metrics.realtime.samePhaseEvents += 1;
+      if (this.metrics.realtime.samePhaseSamples.length < 20) this.metrics.realtime.samePhaseSamples.push({
+        participantIndex: this.index,
+        phase: payload.phase,
+        roundIndex: payload.snapshot?.roundIndex ?? null,
+        payloadVersion: payload.version,
+        currentVersion: this.currentVersion,
+        currentRoundIndex: this.currentSnapshot?.roundIndex ?? null,
+        hasSnapshot: Boolean(payload.snapshot),
+        activeTransition: this.context.activeTransition?.id ?? null,
+      });
+    }
     const priority = payload.version > this.currentVersion && payload.phase !== this.currentSnapshot?.phase;
     if (priority) {
       this.trailingQueued = false;
