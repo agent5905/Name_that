@@ -18,8 +18,8 @@ if (stages.some((stage, index) => index > 0 && stage <= stages[index - 1])) {
   throw new Error('Stages must be strictly increasing.');
 }
 const browserObservers = process.env.CAPACITY_BROWSER_OBSERVERS === '1';
-if (browserObservers && (stages.length !== 1 || stages[0] !== 225)) {
-  throw new Error('CAPACITY_BROWSER_OBSERVERS=1 is reserved for the single final 225-client rehearsal.');
+if (browserObservers && (stages.length !== 1 || ![5, 225].includes(stages[0]))) {
+  throw new Error('CAPACITY_BROWSER_OBSERVERS=1 supports only a 5-client instrumentation smoke or the single final 225-client rehearsal.');
 }
 const origin = required('CAPACITY_ORIGIN').replace(/\/$/, '');
 const expectedHostname = required('CAPACITY_EXPECTED_HOSTNAME');
