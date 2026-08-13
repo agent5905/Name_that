@@ -1,4 +1,4 @@
-import { adminClient, apiHandler, bearerToken, json, normalizeSnapshot, roomCode, throwRpcError, tokenHash, uuid } from '../../../_lib/api';
+import { adminClient, apiHandler, bearerToken, json, normalizeSnapshot, parseParticipantState, roomCode, throwRpcError, tokenHash, uuid } from '../../../_lib/api';
 
 export const onRequest = apiHandler('GET', async ({ env, params, request }) => {
   const code = roomCode(params.code);
@@ -19,8 +19,8 @@ export const onRequest = apiHandler('GET', async ({ env, params, request }) => {
       p_participant_token_hash: await tokenHash(token),
     });
     if (answer.error) throwRpcError(answer.error);
-    const answerData = typeof answer.data === 'object' && answer.data !== null && !Array.isArray(answer.data) ? answer.data : {};
-    participant = { playerId, answerEmployeeId: answerData.employeeId ?? null };
+    const state=parseParticipantState(answer.data,data.phase,data.round_index);
+    participant = { playerId, ...state };
   }
   return json({ snapshot: normalizeSnapshot(data), ...(participant ? { participant } : {}) });
 });

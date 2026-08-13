@@ -51,7 +51,9 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth, rol
     snapshotPhaseRef.current = effective.phase;
     snapshotRoundRef.current = effective.roundIndex;
     if (source === 'push') lastPushedVersionRef.current = effective.version;
-    if (source === 'push' && roundChanged && effective.phase === 'question_open') setParticipantState(null);
+    if (source === 'push' && roundChanged && effective.phase === 'question_open') {
+      setParticipantState((current) => current ? { ...current, answerEmployeeId: null, roundFeedback: null, standing: null } : null);
+    }
     else if (updateParticipant) setParticipantState(nextParticipant ?? null);
     setError(null);
     setLoading(false);
@@ -175,7 +177,12 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth, rol
                   || (version === snapshotVersionRef.current && version !== lastPushedVersionRef.current && pushed !== null);
                 if (priority) {
                   const next = parsePushedSnapshot(pushed, code, version, phase);
-                  if (next) applySnapshot(next, 'push');
+                  if (next) {
+                    const applied = applySnapshot(next, 'push');
+                    if (applied && participantPlayerId && (next.phase === 'employee_revealed' || next.phase === 'results_displayed' || next.phase === 'leaderboard_displayed' || next.phase === 'complete')) {
+                      void refetchRef.current(true, 'transition');
+                    }
+                  }
                   else void refetch(true, 'transition');
                 }
               }
@@ -247,7 +254,13 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth, rol
   const setSnapshot = useCallback((next: GameSnapshot) => { applySnapshot(next, 'http'); }, [applySnapshot]);
   const markAnswered = useCallback((answerEmployeeId: string, roundIndex: number) => {
     if (!participantPlayerId || snapshotRef.current?.phase !== 'question_open' || snapshotRef.current.roundIndex !== roundIndex) return false;
-    setParticipantState({ playerId: participantPlayerId, answerEmployeeId });
+    setParticipantState((current) => ({
+      playerId: participantPlayerId,
+      answerEmployeeId,
+      totalScore: current?.totalScore ?? 0,
+      roundFeedback: null,
+      standing: null,
+    }));
     return true;
   }, [participantPlayerId]);
   return { snapshot, participantState, loading, error: error ?? realtimeWarning, offline, refetch, setSnapshot, markAnswered };

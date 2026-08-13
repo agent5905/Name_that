@@ -50,11 +50,13 @@ Snapshot fields are `roomCode`, `phase`, `roundIndex`, `roundCount`, `connectedP
 
 ### Commands and media
 
-- `POST /api/rooms/:code/answers` with participant bearer authorization and JSON `{ playerId, choiceId }` returns `{ answer: { accepted, idempotent, employeeId } }`.
-- `POST /api/rooms/:code/actions` with host bearer authorization and JSON `{ action }` returns `{ snapshot }`. Actions are `start`, `lock`, `reveal`, `show_results`, `next_round`, and `end`.
+- `POST /api/rooms/:code/answers` with participant bearer authorization and JSON `{ playerId, choiceId, roundIndex }` returns `{ answer: { accepted, idempotent, employeeId, roundIndex } }`.
+- `POST /api/rooms/:code/actions` with host bearer authorization and JSON `{ action }` returns `{ snapshot }`. Actions are `start`, `lock`, `reveal`, `show_results`, `show_leaderboard`, `next_round`, and `end`.
 - `GET /api/rooms/:code/media/:memberId` returns `image/webp` only when that member is the current correct answer and the phase is at least reveal; otherwise it returns the generic `MEDIA_NOT_AVAILABLE` 404.
 
-The enforced progression is `lobby -> question_open -> answers_locked -> employee_revealed -> results_displayed -> question_open (next round)`. `end` is legal only from `results_displayed`, preventing completion from leaking an unrevealed identity. Every transition takes an exclusive per-room advisory gate and then locks the room row. Answer submission takes the shared form of that gate before checking `question_open`, allowing concurrent inserts while preserving an exact answer/lock boundary. The `(round_id, player_id)` primary key makes one answer immutable. Repeating the same answer is idempotent; changing it is rejected.
+The enforced progression is `lobby -> question_open -> answers_locked -> employee_revealed -> results_displayed`. A non-final Results screen may either advance directly to the next question or enter `leaderboard_displayed`; a final Results screen must enter `leaderboard_displayed` before `end` may produce `complete`. Every transition takes an exclusive per-room advisory gate and then locks the room row. Answer submission takes the shared form of that gate and includes the expected round index, allowing concurrent inserts while preserving an exact answer/lock boundary and preventing a delayed request from scoring a later round. The answer primary key makes one answer immutable. Repeating the same requested-round answer is idempotent even after a phase advance; changing it is rejected.
+
+Scoring is database-authoritative. Each question records its database open time, and each accepted answer stores its accepted timestamp, correctness, bounded authoritative elapsed milliseconds, awarded points, and streak transition. Correct answers receive 750 base points plus a deterministic integer-rounded speed bonus of up to 250 over 20 seconds; wrong answers receive zero. The participant answer response contains no correctness or score. Authenticated participant hydration discloses current-round feedback only from Reveal onward and rank only during Leaderboard or Complete. Public snapshots expose only the bounded Top 5 mid-game or Top 10 final board, ordered by total score, correct-answer count, total correct response time, then player UUID.
 
 ## Database and demo content
 

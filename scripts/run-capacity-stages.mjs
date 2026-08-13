@@ -10,9 +10,9 @@ const required = (name) => {
   return value;
 };
 const stages = process.argv.slice(2).map(Number);
-const allowed = new Set([5, 10, 25, 50, 100, 175, 225]);
+const allowed = new Set([5, 25, 100, 175, 225]);
 if (!stages.length || stages.some((stage) => !Number.isInteger(stage) || !allowed.has(stage))) {
-  throw new Error('Pass one or more ordered stages from 5, 10, 25, 50, 100, 175, and 225.');
+  throw new Error('Pass one or more ordered scoring stages from 5, 25, 100, 175, and 225.');
 }
 if (stages.some((stage, index) => index > 0 && stage <= stages[index - 1])) {
   throw new Error('Stages must be strictly increasing.');

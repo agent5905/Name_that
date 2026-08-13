@@ -22,9 +22,60 @@ const priorityPhaseBroadcast = readFileSync(new URL('../../supabase/migrations/2
 const authoritativePhasePush = readFileSync(new URL('../../supabase/migrations/202608110013_authoritative_phase_push.sql',import.meta.url),'utf8');
 const directHostPhaseAction = readFileSync(new URL('../../supabase/migrations/202608110014_direct_host_phase_action.sql',import.meta.url),'utf8');
 const capacity225 = readFileSync(new URL('../../supabase/migrations/202608110015_225_participant_capacity.sql',import.meta.url),'utf8');
+const leaderboardPhase = readFileSync(new URL('../../supabase/migrations/202608110016_leaderboard_phase.sql',import.meta.url),'utf8');
+const scoring = readFileSync(new URL('../../supabase/migrations/202608110017_authoritative_scoring.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
+  it('commits the enum addition before the scoring migration references it',()=>{
+    expect(leaderboardPhase).toContain("add value if not exists 'leaderboard_displayed'");
+    expect(leaderboardPhase).not.toContain('create or replace function');
+    expect(applyScript.indexOf("['202608110016'")).toBeGreaterThan(applyScript.indexOf("['202608110015'"));
+    expect(applyScript.indexOf("['202608110017'")).toBeGreaterThan(applyScript.indexOf("['202608110016'"));
+  });
+
+  it('scores only from database clocks and preserves round-stable answer retries',()=>{
+    const answer=scoring.slice(scoring.indexOf('function public.submit_answer('),scoring.indexOf('function public.participant_answer('));
+    expect(answer).toContain('p_expected_round integer');
+    expect(answer.indexOf('select choice_id into existing')).toBeLessThan(answer.indexOf("r.phase<>'question_open'"));
+    expect(answer).toContain('r.current_round<>p_expected_round');
+    expect(answer).toContain('accepted:=clock_timestamp()');
+    expect(answer).toContain('authoritative_elapsed_ms,points_awarded,streak_before,streak_after');
+    expect(answer).not.toContain('p_elapsed');
+    expect(answer).not.toContain('p_score');
+    expect(scoring).toContain('250::bigint * (20000 - least(greatest(p_elapsed_ms,0),20000)) + 10000');
+  });
+
+  it('updates the score aggregate only after a unique immutable answer insert',()=>{
+    const answer=scoring.slice(scoring.indexOf('function public.submit_answer('),scoring.indexOf('function public.participant_answer('));
+    expect(answer.match(/on conflict\(question_id,player_id\)do nothing/g)).toHaveLength(1);
+    expect(answer.match(/on conflict\(round_id,player_id\)do nothing/g)).toHaveLength(1);
+    expect(answer.indexOf('if existing is null then raise exception')).toBeLessThan(answer.indexOf('update public.players set total_score'));
+    expect(answer).toContain("'idempotent',true");
+  });
+
+  it('keeps personal outcomes private until reveal and materializes bounded deterministic boards',()=>{
+    const personal=scoring.slice(scoring.indexOf('function public.participant_answer('),scoring.indexOf('function public.host_action('));
+    expect(personal).toContain("r.phase in('question_open','answers_locked')");
+    expect(personal).toContain('visible_score:=p.total_score-points');
+    expect(personal).toContain("r.phase in('employee_revealed','results_displayed','leaderboard_displayed','complete')");
+    expect(personal).toContain('p.eligible_from_round<=r.current_round');
+    expect(personal).toContain("'roundIndex',r.current_round");
+    expect(personal).toContain("'standing',standing");
+    expect(scoring).toContain('total_score desc,p.correct_answer_count desc');
+    expect(scoring).toContain("'correctAnswers',correct_answer_count");
+    expect(scoring).toContain("r.current_round=last_round then 10 else 5");
+  });
+
+  it('requires a final leaderboard before completion and retains phase-only broadcasts',()=>{
+    const host=scoring.slice(scoring.indexOf('function public.host_action('),scoring.indexOf('function public.host_action_direct('));
+    expect(host).toContain("when'show_leaderboard'");
+    expect(host).toContain("r.phase<>'leaderboard_displayed'or r.current_round<>last_round");
+    expect(host).toContain("r.phase not in('results_displayed','leaderboard_displayed')");
+    expect(scoring).toContain("p_action not in('start','lock','reveal','show_results','show_leaderboard','next_round','end')");
+    expect(scoring).toContain("new.phase is not distinct from old.phase and new.round_index is not distinct from old.round_index then return null");
+    expect(scoring).toContain("'leaderboard',new.leaderboard");
+  });
   it('raises the effective serialized admission boundary to exactly 225 with retry-stable joins', () => {
     const join = capacity225.slice(capacity225.indexOf('function public.join_room('), capacity225.indexOf('function public.submit_answer('));
     expect(join).toContain('where code = p_code for update');

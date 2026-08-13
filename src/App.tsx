@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { GameDefinition, GameQuestionDefinition, GameSummary, SessionCreationOperation } from './domain/admin';
-import type { Choice, GamePhase, GameSnapshot, HostAction } from './domain/game';
+import type { Choice, GameLeaderboard, GamePhase, GameSnapshot, HostAction, ParticipantSnapshot } from './domain/game';
 import { phaseLabels } from './domain/game';
 import { useRoomSnapshot } from './hooks/useRoomSnapshot';
 import {
@@ -18,6 +18,8 @@ const choiceMarks = 'ABCDEFGHIJ'.split('');
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const answerDenominator = (snapshot: GameSnapshot) => snapshot.eligibleParticipantCount ?? snapshot.connectedParticipantCount;
+const scoreFormatter = new Intl.NumberFormat('en-US');
+const formatScore = (score: number) => scoreFormatter.format(score);
 
 
 function navigate(path: string) {
@@ -87,17 +89,19 @@ function RoomRevealPortrait({ code, reveal, assets, compact = false }: { code: s
 }
 
 function useMysteryImage(roundIndex: number | null, assets: readonly PreloadAsset[] | undefined, fallback: string | null | undefined) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [resolved, setResolved] = useState<{ key: string; url: string | null; failed: boolean } | null>(null);
   const asset = assets?.find((candidate) => candidate.kind === 'mystery' && candidate.roundIndex === roundIndex);
   useEffect(() => {
-    if (!asset) { setUrl(null); setFailed(false); return; }
+    if (!asset) { setResolved(null); return; }
     let cancelled = false;
-    setFailed(false);
-    void preloadedImageObjectUrl(asset).then((next) => { if (!cancelled) { setUrl(next); setFailed(!next); } });
+    void preloadedImageObjectUrl(asset).then((next) => {
+      if (!cancelled) setResolved({ key: asset.key, url: next, failed: !next });
+    });
     return () => { cancelled = true; };
   }, [asset]);
-  return asset ? url ?? (failed ? fallback ?? null : null) : fallback ?? null;
+  if (!asset) return fallback ?? null;
+  if (resolved?.key !== asset.key) return null;
+  return resolved.url ?? (resolved.failed ? fallback ?? null : null);
 }
 
 function Home() {
@@ -168,9 +172,9 @@ function Join({ code }: { code: string }) {
   </main>;
 }
 
-function RoundHeader({ snapshot, name }: { snapshot: GameSnapshot; name?: string }) {
+function RoundHeader({ snapshot, name, score }: { snapshot: GameSnapshot; name?: string; score?: number }) {
   const round = snapshot.roundIndex === null ? 0 : snapshot.roundIndex + 1;
-  return <header className="game-header"><Brand compact inert /><div>{name && <span className="player-chip">{name}</span>}<span className="round-chip">Round <strong>{round}</strong> / {snapshot.roundCount}</span></div></header>;
+  return <header className="game-header"><Brand compact inert /><div>{name && <span className="player-chip">{name}</span>}{score !== undefined && <span className="score-chip">Score <strong>{formatScore(score)}</strong></span>}<span className="round-chip">Round <strong>{round}</strong> / {snapshot.roundCount}</span></div></header>;
 }
 
 function Results({ snapshot, large = false }: { snapshot: GameSnapshot; large?: boolean }) {
@@ -187,6 +191,32 @@ function Results({ snapshot, large = false }: { snapshot: GameSnapshot; large?: 
         <i><b style={{ width: `${(item.count / max) * 100}%` }} /></i>
       </div>;
     })}</div>
+  </section>;
+}
+
+function Leaderboard({ board, compact = false }: { board: GameLeaderboard; compact?: boolean }) {
+  const podium = board.entries.slice(0, 3);
+  const remaining = board.entries.slice(3);
+  return <section className={`leaderboard ${board.isFinal ? 'leaderboard--final' : ''} ${compact ? 'leaderboard--compact' : ''}`} aria-label={board.isFinal ? 'Final leaderboard' : 'Top guessers'}>
+    <header><p className="eyebrow">{board.isFinal ? 'Ultimate team member experts' : 'Top guessers'}</p><h1>{board.isFinal ? 'Final podium' : 'Leaderboard'}</h1></header>
+    {board.isFinal && podium.length > 0 ? <div className="podium">{podium.map((entry) => <article className={`podium-place podium-place--${entry.rank}`} key={entry.rank}><span>{entry.rank === 1 ? '1st' : entry.rank === 2 ? '2nd' : '3rd'}</span><strong>{entry.displayName}</strong><b>{formatScore(entry.totalScore)}</b><small>{entry.correctAnswers} correct</small></article>)}</div> : null}
+    <ol className={board.isFinal ? 'leaderboard-list leaderboard-list--final' : 'leaderboard-list'}>{(board.isFinal ? remaining : board.entries).map((entry) => <li key={entry.rank}><span>{entry.rank}</span><strong title={entry.displayName}>{entry.displayName}</strong><b>{formatScore(entry.totalScore)}</b>{!compact && <small>{entry.correctAnswers} correct</small>}</li>)}</ol>
+  </section>;
+}
+
+function ParticipantFeedback({ feedback, revealName }: { feedback: NonNullable<ParticipantSnapshot['roundFeedback']>; revealName: string }) {
+  if (feedback.outcome === 'correct') return <section className="round-feedback round-feedback--correct" role="status">
+    <div className="celebration-burst" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+    <p>You got it!</p><strong>+{formatScore(feedback.points)}</strong><span>{feedback.streak === 1 ? '1 correct in a row' : `${feedback.streak} correct in a row`}</span>
+  </section>;
+  if (feedback.outcome === 'incorrect') return <section className="round-feedback round-feedback--neutral" role="status"><p>It was {revealName}.</p><strong>+0</strong><span>You’ll get the next one.</span></section>;
+  return <section className="round-feedback round-feedback--neutral" role="status"><p>No answer this round.</p><strong>+0</strong><span>Ready for the next mystery.</span></section>;
+}
+
+function PersonalStanding({ standing, fallbackScore, final = false }: { standing: ParticipantSnapshot['standing']; fallbackScore: number; final?: boolean }) {
+  return <section className={`personal-standing ${final ? 'personal-standing--final' : ''}`} aria-label={final ? 'Your final standing' : 'Your standing'}>
+    <p className="eyebrow">{final ? 'Your final standing' : 'Your place'}</p>
+    {standing ? <><h1>You’re #{standing.rank}</h1><strong>{formatScore(standing.totalScore)} points</strong></> : <><h1>Stand by…</h1><strong>{formatScore(fallbackScore)} points</strong></>}
   </section>;
 }
 
@@ -234,7 +264,7 @@ function ParticipantGame({ code, session }: { code: string; session: Participant
     if (submittedRound === null) return;
     const request = ++answerRequestRef.current;
     setSelected(choice.id); setSubmitting(true); setSubmitError(null);
-    try { await submitAnswer(code, session.token, session.playerId, choice.id); room.markAnswered(choice.id, submittedRound); }
+    try { await submitAnswer(code, session.token, session.playerId, choice.id, submittedRound); room.markAnswered(choice.id, submittedRound); }
     catch (reason) {
       if (request === answerRequestRef.current && currentQuestionRoundRef.current === submittedRound) {
         setSelected(null);
@@ -251,15 +281,18 @@ function ParticipantGame({ code, session }: { code: string; session: Participant
   const reveal = snapshot.revealedEmployee;
   const chosenName = snapshot.choices.find((choice) => choice.id === answerId)?.displayName;
   const revealSrc = preloadedRevealUrl ?? (revealPreloadFailed && reveal?.mediaAvailable ? `/api/rooms/${code}/media/${reveal.id}` : null);
+  const feedback = room.participantState?.roundFeedback?.roundIndex === snapshot.roundIndex ? room.participantState.roundFeedback : null;
+  const totalScore = room.participantState?.totalScore ?? 0;
   return <main className={`participant-shell phase-${snapshot.phase}`}>
-    <RoundHeader snapshot={snapshot} name={session.displayName} />
+    <RoundHeader snapshot={snapshot} name={session.displayName} score={totalScore} />
     {(room.offline || room.error) && <div className="connection-banner" role="status">{room.offline ? 'You’re offline — reconnecting automatically.' : 'Connection interrupted. Retrying…'}</div>}
     <section className="participant-stage" aria-live="polite">
       {snapshot.phase === 'lobby' && <div className="participant-wait"><span className="status-orbit">✓</span><p className="eyebrow">You’re on the guest list</p><h1>Welcome, {session.displayName}.</h1><p>The host is getting the first mystery ready.</p><div className="waiting-meter"><i /><i /><i /><i /></div></div>}
       {snapshot.phase === 'question_open' && <div className="participant-question"><header><PortraitChamber src={mysterySrc} compact /><div><p className="eyebrow">Choose your suspect</p><h1>{snapshot.prompt ?? 'Who is this team member?'}</h1><span>{answerId ? 'Your answer is locked in.' : 'Tap one answer below.'}</span></div></header><div className="choice-grid">{snapshot.choices.map((choice, index) => <button key={choice.id} className={`choice ${answerId === choice.id ? 'is-selected' : ''} ${answerId && answerId !== choice.id ? 'is-muted' : ''}`} disabled={Boolean(answerId) || submitting} onClick={() => { void choose(choice); }}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span>{answerId === choice.id && <em>Locked</em>}</button>)}</div>{submitError && <Notice tone="error">{submitError}</Notice>}{answerId && <div className="submitted-banner"><strong>Locked in: {chosenName}</strong><span>Watch the shared screen for the reveal.</span></div>}</div>}
       {snapshot.phase === 'answers_locked' && <div className="participant-wait locked"><span className="lock-stamp">Locked in</span><h1>{chosenName ? `You picked ${chosenName}.` : 'Voting is closed.'}</h1><p>The spotlight is about to turn on.</p></div>}
-      {(snapshot.phase === 'employee_revealed' || snapshot.phase === 'results_displayed') && reveal && <div className="participant-reveal"><p className="eyebrow">Mystery solved</p><PortraitChamber src={revealSrc} revealed name={reveal.displayName} /><h1>{reveal.displayName}</h1>{reveal.team && <p className="team-line">{reveal.team}</p>}{reveal.funFact && <blockquote>“{reveal.funFact}”</blockquote>}{snapshot.phase === 'results_displayed' && <Results snapshot={snapshot} />}</div>}
-      {snapshot.phase === 'complete' && <div className="participant-wait finale"><span className="finale-burst">★</span><p className="eyebrow">Final curtain</p><h1>That’s the whole crew!</h1><p>Thanks for playing, {session.displayName}.</p></div>}
+      {(snapshot.phase === 'employee_revealed' || snapshot.phase === 'results_displayed') && reveal && <div className="participant-reveal"><p className="eyebrow">Mystery solved</p>{feedback && <ParticipantFeedback feedback={feedback} revealName={reveal.displayName} />}<PortraitChamber src={revealSrc} revealed name={reveal.displayName} /><h1>{reveal.displayName}</h1>{reveal.team && <p className="team-line">{reveal.team}</p>}{reveal.funFact && <blockquote>“{reveal.funFact}”</blockquote>}{snapshot.phase === 'results_displayed' && <Results snapshot={snapshot} />}</div>}
+      {snapshot.phase === 'leaderboard_displayed' && <div className="participant-leaderboard"><span className="standing-star" aria-hidden="true">★</span><PersonalStanding standing={room.participantState?.standing ?? null} fallbackScore={totalScore} /></div>}
+      {snapshot.phase === 'complete' && <div className="participant-wait finale"><span className="finale-burst">★</span><p className="eyebrow">Final curtain</p><h1>That’s the whole crew!</h1><p>Thanks for playing, {session.displayName}.</p><PersonalStanding standing={room.participantState?.standing ?? null} fallbackScore={totalScore} final /></div>}
     </section>
     <footer className="participant-footer"><span>Room {code}</span>{snapshot.phase === 'complete' ? <span>Complete</span> : <span className="live-dot">Live</span>}</footer>
   </main>;
@@ -519,7 +552,7 @@ const actionForPhase: Partial<Record<GamePhase, { action: HostAction; label: str
   question_open: { action: 'lock', label: 'Lock answers', hint: 'Close voting when the room is ready' },
   answers_locked: { action: 'reveal', label: 'Reveal teammate', hint: 'Fire the reveal on every screen' },
   employee_revealed: { action: 'show_results', label: 'Show results', hint: 'See how the room voted' },
-  results_displayed: { action: 'next_round', label: 'Next round', hint: 'Cue the next mystery' },
+  leaderboard_displayed: { action: 'next_round', label: 'Next round', hint: 'Cue the next mystery' },
 };
 
 function HostDashboard({ session }: { session: HostSession }) {
@@ -559,10 +592,17 @@ function HostDashboard({ session }: { session: HostSession }) {
   if (!room.snapshot) return <main className="host-shell error-page"><Notice tone="error">{room.error ?? 'Could not open this room.'}</Notice></main>;
   const snapshot = room.snapshot;
   const isFinalRound = hostRoom?.isFinalRound ?? ((snapshot.roundIndex ?? -1) + 1 >= snapshot.roundCount);
-  const next = snapshot.phase === 'results_displayed' && isFinalRound ? { action: 'end' as const, label: 'Finish game', hint: 'Close with the finale' } : actionForPhase[snapshot.phase];
+  const next = snapshot.phase === 'results_displayed'
+    ? { action: 'show_leaderboard' as const, label: isFinalRound ? 'Show final leaderboard' : 'Show leaderboard', hint: isFinalRound ? 'Celebrate the winner before closing' : 'Put the Top 5 on the shared display' }
+    : snapshot.phase === 'leaderboard_displayed' && isFinalRound
+      ? { action: 'end' as const, label: 'Finish game', hint: 'Close with the final standings' }
+      : actionForPhase[snapshot.phase];
+  const secondary = snapshot.phase === 'results_displayed' && !isFinalRound
+    ? { action: 'next_round' as const, label: 'Next round' }
+    : null;
   return <main className={`host-shell host-phase-${snapshot.phase}`}><header className="host-header"><Brand compact /><nav><a href="/host" onClick={(event) => { event.preventDefault(); navigate('/host'); }}>My games</a><span className="phase-chip">{phaseLabels[snapshot.phase]}</span><strong>{session.code}</strong></nav></header>{(room.offline || room.error) && <div className="connection-banner">Connection interrupted — controls will resume automatically.</div>}
-    <div className="control-layout"><section className="control-main"><header><div><p className="eyebrow">{session.gameName ?? hostRoom?.gameName ?? 'Live mystery'}</p><h1>{snapshot.phase === 'lobby' ? 'The room is open.' : snapshot.phase === 'complete' ? 'That’s a wrap.' : `Round ${(snapshot.roundIndex ?? 0) + 1} of ${snapshot.roundCount}`}</h1></div><div className="room-code"><span>Room code</span><strong>{session.code}</strong></div></header><div className="control-metrics"><article><strong>{snapshot.connectedParticipantCount}</strong><span>Players</span></article><article><strong>{snapshot.submittedAnswerCount}<i>/{answerDenominator(snapshot)}</i></strong><span>Eligible answers</span></article><article><strong>{snapshot.roundIndex === null ? '—' : snapshot.roundIndex + 1}<i>/{snapshot.roundCount}</i></strong><span>Round</span></article></div><section className="round-monitor"><header><h2>Stage monitor</h2><span>{phaseLabels[snapshot.phase]}</span></header>{snapshot.phase === 'lobby' ? <div className="monitor-empty"><PortraitChamber compact /><p>The first teammate is waiting behind the curtain.</p></div> : <div className="monitor-choices">{snapshot.choices.map((choice, index) => <div className={snapshot.revealedEmployee?.id === choice.id ? 'is-correct' : ''} key={choice.id}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span>{snapshot.revealedEmployee?.id === choice.id && <em>Correct</em>}</div>)}</div>}{hostRoom?.correctEmployee && snapshot.phase !== 'complete' && <div className="host-answer"><span>Host answer</span><strong>{hostRoom.correctEmployee.displayName}</strong></div>}</section></section>
-      <aside className="control-sidebar">{snapshot.phase === 'complete' ? <section className="next-cue finale-control"><span className="finale-burst">★</span><p className="eyebrow">Fresh room, same game</p><h2>Ready for another run?</h2><p>Replay starts a clean session with a new code and no previous players or answers.</p><button className="button button--hot button--block" disabled={Boolean(busy)} onClick={() => { void replay(); }}>{busy === 'play_again' ? 'Creating room…' : 'Play again'} <span>↻</span></button><a className="button button--ghost button--block" href="/host" onClick={(event) => { event.preventDefault(); navigate('/host'); }}>My games</a></section> : <section className="next-cue"><p className="eyebrow">Next cue</p><h2>{next?.label}</h2><p>{next?.hint}</p>{next && <button className="button button--hot button--block" disabled={Boolean(busy) || room.offline} onClick={() => { void act(next.action); }}>{busy ? 'Working…' : next.label} <span>→</span></button>}</section>}{error && <Notice tone="error">{error}</Notice>}<section className="share-card"><p className="eyebrow">Audience links</p><a href={`/display/${session.code}`} target="_blank" rel="noreferrer">Open shared display <span>↗</span></a><button onClick={() => { void navigator.clipboard.writeText(`${location.origin}/join/${session.code}`); }}>Copy join link <span>⧉</span></button></section></aside></div>
+    <div className="control-layout"><section className="control-main"><header><div><p className="eyebrow">{session.gameName ?? hostRoom?.gameName ?? 'Live mystery'}</p><h1>{snapshot.phase === 'lobby' ? 'The room is open.' : snapshot.phase === 'complete' ? 'That’s a wrap.' : `Round ${(snapshot.roundIndex ?? 0) + 1} of ${snapshot.roundCount}`}</h1></div><div className="room-code"><span>Room code</span><strong>{session.code}</strong></div></header><div className="control-metrics"><article><strong>{snapshot.connectedParticipantCount}</strong><span>Players</span></article><article><strong>{snapshot.submittedAnswerCount}<i>/{answerDenominator(snapshot)}</i></strong><span>Eligible answers</span></article><article><strong>{snapshot.roundIndex === null ? '—' : snapshot.roundIndex + 1}<i>/{snapshot.roundCount}</i></strong><span>Round</span></article></div><section className="round-monitor"><header><h2>Stage monitor</h2><span>{phaseLabels[snapshot.phase]}</span></header>{snapshot.leaderboard && (snapshot.phase === 'leaderboard_displayed' || snapshot.phase === 'complete') ? <Leaderboard board={snapshot.leaderboard} compact /> : snapshot.phase === 'lobby' ? <div className="monitor-empty"><PortraitChamber compact /><p>The first teammate is waiting behind the curtain.</p></div> : <div className="monitor-choices">{snapshot.choices.map((choice, index) => <div className={snapshot.revealedEmployee?.id === choice.id ? 'is-correct' : ''} key={choice.id}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span>{snapshot.revealedEmployee?.id === choice.id && <em>Correct</em>}</div>)}</div>}{hostRoom?.correctEmployee && snapshot.phase !== 'complete' && snapshot.phase !== 'leaderboard_displayed' && <div className="host-answer"><span>Host answer</span><strong>{hostRoom.correctEmployee.displayName}</strong></div>}</section></section>
+      <aside className="control-sidebar">{snapshot.phase === 'complete' ? <section className="next-cue finale-control"><span className="finale-burst">★</span><p className="eyebrow">Fresh room, same game</p><h2>Ready for another run?</h2><p>Replay starts a clean session with a new code and no previous players or answers.</p><button className="button button--hot button--block" disabled={Boolean(busy)} onClick={() => { void replay(); }}>{busy === 'play_again' ? 'Creating room…' : 'Play again'} <span>↻</span></button><a className="button button--ghost button--block" href="/host" onClick={(event) => { event.preventDefault(); navigate('/host'); }}>My games</a></section> : <section className="next-cue"><p className="eyebrow">Next cue</p><h2>{next?.label}</h2><p>{next?.hint}</p>{next && <button className="button button--hot button--block" disabled={Boolean(busy) || room.offline} onClick={() => { void act(next.action); }}>{busy ? 'Working…' : next.label} <span>→</span></button>}{secondary && <button className="button button--ghost button--block" disabled={Boolean(busy) || room.offline} onClick={() => { void act(secondary.action); }}>{secondary.label} <span>→</span></button>}</section>}{error && <Notice tone="error">{error}</Notice>}<section className="share-card"><p className="eyebrow">Audience links</p><a href={`/display/${session.code}`} target="_blank" rel="noreferrer">Open shared display <span>↗</span></a><button onClick={() => { void navigator.clipboard.writeText(`${location.origin}/join/${session.code}`); }}>Copy join link <span>⧉</span></button></section></aside></div>
   </main>;
 }
 
@@ -587,7 +627,8 @@ function Display({ code }: { code: string }) {
     {snapshot.phase === 'question_open' && <section className="display-question"><PortraitChamber src={mysterySrc} /><div><p className="eyebrow">Mystery {(snapshot.roundIndex ?? 0) + 1}</p><h1>{snapshot.prompt ?? 'Who is this team member?'}</h1><div className="display-choices">{snapshot.choices.map((choice, index) => <div key={choice.id}><b>{choiceMarks[index]}</b><span>{choice.displayName}</span></div>)}</div><div className="answer-meter"><i><b style={{ width: `${answerDenominator(snapshot) ? (snapshot.submittedAnswerCount / answerDenominator(snapshot)) * 100 : 0}%` }} /></i><strong>{snapshot.submittedAnswerCount} / {answerDenominator(snapshot)}</strong><span>eligible answers locked in</span></div></div></section>}
     {snapshot.phase === 'answers_locked' && <section className="display-locked"><PortraitChamber src={mysterySrc} /><div className="lock-slam"><span>Locked in</span><h1>The room has spoken.</h1><p>Stand by for the reveal.</p></div></section>}
     {(snapshot.phase === 'employee_revealed' || snapshot.phase === 'results_displayed') && reveal && <section className="display-reveal"><RoomRevealPortrait code={code} reveal={reveal} assets={snapshot.preloadAssets} /><div><p className="eyebrow">Mystery solved</p><h1>{reveal.displayName}</h1>{reveal.team && <h2>{reveal.team}</h2>}{reveal.funFact && <blockquote>“{reveal.funFact}”</blockquote>}{snapshot.phase === 'results_displayed' && <Results snapshot={snapshot} large />}</div></section>}
-    {snapshot.phase === 'complete' && <section className="display-complete"><div className="finale-burst">★</div><p className="eyebrow">Final curtain</p><h1>You know the crew.<br /><em>Now make some memories.</em></h1><p>{snapshot.roundCount} mysteries revealed · Thanks for playing.</p></section>}
+    {snapshot.phase === 'leaderboard_displayed' && snapshot.leaderboard && <section className="display-leaderboard"><Leaderboard board={snapshot.leaderboard} /></section>}
+    {snapshot.phase === 'complete' && <section className="display-complete">{snapshot.leaderboard ? <Leaderboard board={snapshot.leaderboard} /> : <><div className="finale-burst">★</div><p className="eyebrow">Final curtain</p><h1>You know the crew.<br /><em>Now make some memories.</em></h1><p>{snapshot.roundCount} mysteries revealed · Thanks for playing.</p></>}</section>}
     <footer className="display-footer"><span>Name That Team Member</span><span>{snapshot.phase === 'complete' ? 'Show complete' : `Room ${code}`}</span></footer></main>;
 }
 

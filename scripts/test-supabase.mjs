@@ -265,25 +265,26 @@ try {
   assert.equal(snapshot.data.revealed_employee, null, 'identity must be hidden before reveal');
   assert.equal(snapshot.data.results, null, 'results must be hidden before results phase');
   assert(!Object.hasOwn(snapshot.data, 'correctEmployee'), 'public snapshot must not gain the host-only correct marker');
-  const choiceId = snapshot.data.choices[0].id;
+  const choiceId = hostView.correctEmployee.id;
 
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId, p_expected_round: 0,
   }, 'PARTICIPANT_UNAUTHORIZED');
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
   }, 'PARTICIPANT_UNAUTHORIZED');
 
   const first = await rpc('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
   });
   assert.equal(first.idempotent, false);
+  assert(!Object.hasOwn(first, 'points') && !Object.hasOwn(first, 'isCorrect') && !Object.hasOwn(first, 'elapsedMilliseconds'), 'answer acknowledgement must not leak scoring');
   const duplicate = await rpc('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
   });
   assert.equal(duplicate.idempotent, true);
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: snapshot.data.choices[1].id,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: snapshot.data.choices.find((choice) => choice.id !== choiceId).id, p_expected_round: 0,
   }, 'ANSWER_IMMUTABLE');
   await delay(750);
   assert.equal(broadcasts.length, 1, 'same-phase answers and idempotent retries must not fan out audience broadcasts');
@@ -297,7 +298,7 @@ try {
   assert.equal(broadcasts.length, 1, 'a disconnected channel must not receive the missed transition later as a duplicate');
   roomChannel = await subscribeRoom();
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId, p_expected_round: 0,
   }, 'ANSWERS_CLOSED');
   await expectMarker('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'show_results' }, 'ILLEGAL_TRANSITION');
   await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'reveal' });
@@ -318,8 +319,36 @@ try {
   assert.equal(snapshot.data.results.correctAnswers, choiceId === snapshot.data.revealed_employee.id ? 1 : 0);
   assert.equal(snapshot.data.results.choices.length, 4);
   assert.equal(snapshot.data.results.choices.reduce((sum, item) => sum + item.count, 0), 1);
+  const ledger = await admin.from('answers').select('submitted_at,authoritative_elapsed_ms,is_correct,points_awarded,streak_before,streak_after').eq('room_id', roomId).eq('player_id', player.playerId).single();
+  assert(!ledger.error);
+  assert.equal(ledger.data.is_correct, true);
+  assert(Number.isInteger(ledger.data.authoritative_elapsed_ms) && ledger.data.authoritative_elapsed_ms >= 0 && ledger.data.authoritative_elapsed_ms <= 86_400_000);
+  const scoringElapsed = Math.min(20_000, Math.max(0, ledger.data.authoritative_elapsed_ms));
+  assert.equal(ledger.data.points_awarded, 750 + Math.floor((250 * (20_000 - scoringElapsed) + 10_000) / 20_000));
+  assert.equal(ledger.data.streak_before, 0);
+  assert.equal(ledger.data.streak_after, 1);
+  const aggregate = await admin.from('players').select('total_score,correct_answer_count,correct_response_ms,current_streak').eq('id', player.playerId).single();
+  assert.deepEqual(aggregate.data, { total_score: ledger.data.points_awarded, correct_answer_count: 1, correct_response_ms: ledger.data.authoritative_elapsed_ms, current_streak: 1 });
+  const anonymousScoreMutation = await anon.from('players').update({ total_score: 999999 }).eq('id', player.playerId);
+  assert(anonymousScoreMutation.error, 'anonymous clients must not mutate authoritative score aggregates');
+  const anonymousAnswerRpc = await anon.rpc('submit_answer', {
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
+  });
+  assert(anonymousAnswerRpc.error, 'anonymous clients must not directly invoke the authoritative answer RPC');
+  await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'show_leaderboard' });
+  snapshot = await admin.from('room_snapshots').select('*').eq('room_code', roomCode).single();
+  assert.equal(snapshot.data.phase, 'leaderboard_displayed');
+  assert.equal(snapshot.data.leaderboard.entries[0].totalScore, ledger.data.points_awarded);
+  assert.equal(snapshot.data.leaderboard.entries[0].displayName, player.displayName);
+  await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'next_round' });
+  const staleRetry = await rpc('submit_answer', {
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
+  });
+  assert.equal(staleRetry.idempotent, true, 'an old-round retry must recover its original answer instead of scoring the new round');
+  const ledgerAfterStaleRetry = await admin.from('answers').select('*', { count: 'exact', head: true }).eq('room_id', roomId).eq('player_id', player.playerId);
+  assert.equal(ledgerAfterStaleRetry.count, 1, 'an old-round retry must not create or award a second answer');
 
-  console.log('Supabase integration/security checks passed (RLS, CSPRNG layout, 225-player concurrency cap, legacy-anon private Realtime, phase-only delivery/reconnect, credentials, Storage denial, transitions, leakage, result math).');
+  console.log('Supabase integration/security checks passed (RLS, authoritative scoring/timing, score secrecy, idempotency, leaderboard, 225-player cap, Realtime, credentials, Storage denial, transitions, and result math).');
 } finally {
   if (roomChannel) await anon.removeChannel(roomChannel);
   if (forgedObserverChannel && forgedObserver) await forgedObserver.removeChannel(forgedObserverChannel);

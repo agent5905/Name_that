@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
 const baseUrl = new URL(process.env.SMOKE_BASE_URL ?? 'http://127.0.0.1:8788');
@@ -50,7 +51,7 @@ assert.match(roomId, /^[0-9a-f-]{36}$/i);
 assert.match(hostToken, /^[A-Za-z0-9_-]{43}$/);
 
 const joined = await request(`/api/rooms/${code}/join`, {
-  method: 'POST', body: { name: 'Pages Smoke Player' }, expectedStatus: 201,
+  method: 'POST', body: { name: 'Pages Smoke Player', participantToken: randomBytes(32).toString('base64url'), idempotencyKey: randomUUID() }, expectedStatus: 201,
 });
 const { participant, participantToken } = joined.body;
 assert.match(participant.playerId, /^[0-9a-f-]{36}$/i);
@@ -68,19 +69,19 @@ assert.equal(started.body.snapshot.choices.length, 4);
 
 const host = await request(`/api/rooms/${code}/host`, { token: hostToken });
 const correctId = host.body.host.correctEmployee.id;
-const answerId = started.body.snapshot.choices[0].id;
+const answerId = correctId;
 const wrongId = started.body.snapshot.choices.find((choice) => choice.id !== correctId).id;
 
 const secretMedia = await request(`/api/rooms/${code}/media/${correctId}`, { expectedStatus: 404 });
 assert.equal(secretMedia.body.error.code, 'MEDIA_NOT_AVAILABLE');
 
 const answered = await request(`/api/rooms/${code}/answers`, {
-  method: 'POST', token: participantToken, body: { playerId: participant.playerId, choiceId: answerId },
+  method: 'POST', token: participantToken, body: { playerId: participant.playerId, choiceId: answerId, roundIndex: 0 },
 });
 assert.equal(answered.body.answer.accepted, true);
 assert.equal(answered.body.answer.idempotent, false);
 const replay = await request(`/api/rooms/${code}/answers`, {
-  method: 'POST', token: participantToken, body: { playerId: participant.playerId, choiceId: answerId },
+  method: 'POST', token: participantToken, body: { playerId: participant.playerId, choiceId: answerId, roundIndex: 0 },
 });
 assert.equal(replay.body.answer.idempotent, true);
 
@@ -91,6 +92,8 @@ assert.equal(participantSnapshot.status, 200);
 assert.equal(participantSnapshot.headers.get('cache-control')?.includes('no-store'), true);
 const participantState = await participantSnapshot.json();
 assert.equal(participantState.participant.answerEmployeeId, answerId);
+assert.equal(participantState.participant.totalScore, 0, 'current-round score must remain hidden before reveal');
+assert.equal(participantState.participant.roundFeedback, null, 'correctness must remain hidden before reveal');
 
 await request(`/api/rooms/${code}/actions`, {
   method: 'POST', token: participantToken, body: { action: 'lock' }, expectedStatus: 403,
@@ -101,7 +104,7 @@ const locked = await request(`/api/rooms/${code}/actions`, {
 assert.equal(locked.body.snapshot.phase, 'answers_locked');
 await request(`/api/rooms/${code}/answers`, {
   method: 'POST', token: participantToken,
-  body: { playerId: participant.playerId, choiceId: wrongId }, expectedStatus: 409,
+  body: { playerId: participant.playerId, choiceId: wrongId, roundIndex: 0 }, expectedStatus: 409,
 });
 
 const revealed = await request(`/api/rooms/${code}/actions`, {
@@ -109,6 +112,14 @@ const revealed = await request(`/api/rooms/${code}/actions`, {
 });
 assert.equal(revealed.body.snapshot.revealedEmployee.id, correctId);
 assert.equal(revealed.body.snapshot.results, null);
+const revealedParticipantResponse = await fetch(new URL(`/api/rooms/${code}/snapshot`, baseUrl), {
+  headers: { authorization: `Bearer ${participantToken}`, 'x-player-id': participant.playerId },
+});
+assert.equal(revealedParticipantResponse.status, 200);
+const revealedParticipantBody = await revealedParticipantResponse.json();
+assert.equal(revealedParticipantBody.participant.roundFeedback.outcome, 'correct');
+assert(revealedParticipantBody.participant.roundFeedback.points >= 750 && revealedParticipantBody.participant.roundFeedback.points <= 1000);
+assert.equal(revealedParticipantBody.participant.totalScore, revealedParticipantBody.participant.roundFeedback.points);
 await request(`/api/rooms/${code}/media/${wrongId}`, { expectedStatus: 404 });
 const media = await request(`/api/rooms/${code}/media/${correctId}`, { responseType: 'bytes' });
 assert.equal(media.response.headers.get('content-type'), 'image/webp');
@@ -120,8 +131,14 @@ const results = await request(`/api/rooms/${code}/actions`, {
 assert.equal(results.body.snapshot.phase, 'results_displayed');
 assert.equal(results.body.snapshot.results.totalAnswers, 1);
 assert.equal(results.body.snapshot.results.choices.reduce((sum, choice) => sum + choice.count, 0), 1);
+const leaderboard = await request(`/api/rooms/${code}/actions`, {
+  method: 'POST', token: hostToken, body: { action: 'show_leaderboard' },
+});
+assert.equal(leaderboard.body.snapshot.phase, 'leaderboard_displayed');
+assert.equal(leaderboard.body.snapshot.leaderboard.entries[0].displayName, 'Pages Smoke Player');
+assert.equal(leaderboard.body.snapshot.leaderboard.entries[0].totalScore, revealedParticipantBody.participant.totalScore);
 
-console.log(`${localHost ? 'Local' : 'Deployed'} Pages HTTP smoke passed for room ${code} (health, auth, state, idempotency, media secrecy, reveal, and results).`);
+console.log(`${localHost ? 'Local' : 'Deployed'} Pages HTTP smoke passed for room ${code} (health, auth, score secrecy, idempotency, reveal, results, and leaderboard).`);
 } finally {
   if (cleanupRoom) {
     const snapshotCleanup = await cleanupClient.from('room_snapshots').delete().eq('room_code', cleanupRoom.code);

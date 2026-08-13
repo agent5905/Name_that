@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 
-const ALLOWED_STAGES = new Set([5, 10, 25, 50, 100, 175, 225]);
+const ALLOWED_STAGES = new Set([5, 25, 100, 175, 225]);
 function parseArgs(argv) {
   const values = new Map();
   for (const argument of argv) {
@@ -34,7 +34,7 @@ function parseArgs(argv) {
   };
   const participants = integer('participants', 5, 1, 225);
   if (!ALLOWED_STAGES.has(participants)) {
-    throw new Error('--participants must be a staged value: 5, 10, 25, 50, 100, 175, or 225.');
+    throw new Error('--participants must be a scoring-stage value: 5, 25, 100, 175, or 225.');
   }
   return {
     execute: values.get('execute') === 'true',
@@ -66,7 +66,7 @@ Remote execution additionally requires --execute and all CAPACITY_* acknowledgem
     --join-window-ms=15000 --output=docs/capacity-results/25-client.json
 
 Options:
-  --participants=5|10|25|50|100|175|225
+  --participants=5|25|100|175|225
   --rounds=1..20
   --join-window-ms=0..300000
   --answer-window-ms=0..60000
@@ -105,6 +105,20 @@ function summarize(values) {
     p95Ms: quantile(values, 0.95),
     maxMs: Math.round(Math.max(...values) * 10) / 10,
   };
+}
+
+function scoreForElapsed(elapsedMilliseconds) {
+  const elapsed = Math.max(0, Math.min(20_000, Number(elapsedMilliseconds)));
+  return 750 + Math.floor((250 * (20_000 - elapsed) + 10_000) / 20_000);
+}
+
+function leaderboardTransitionCount(rounds) {
+  if (rounds <= 0) return 0;
+  return rounds === 1 ? 1 : 2;
+}
+
+for (const [elapsed, expected] of [[-1, 1000], [0, 1000], [5_000, 938], [10_000, 875], [15_000, 813], [20_000, 750], [60_000, 750]]) {
+  if (scoreForElapsed(elapsed) !== expected) throw new Error(`Scoring oracle failed at ${elapsed} ms.`);
 }
 
 const sleep = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
@@ -155,17 +169,19 @@ function estimate(config) {
       duplicateJoinRetries: duplicates,
       roomFullBoundaryProbe: config.participants === 225 ? 1 : 0,
       samePhaseInvalidationSnapshots: 0,
+      personalizedRevealSnapshots: config.participants * config.rounds,
+      personalizedLeaderboardSnapshots: config.participants * leaderboardTransitionCount(config.rounds),
       externalHostAndDisplaySafetyPollsNotGenerated: `approximately ${Math.ceil(estimatedDurationSeconds / 2) * 2} at the target 2-second role interval`,
     },
     supabaseRequests: {
-      hostPhaseRpcCalls: `${config.rounds * 4} before an optional end action when all saved-game rounds are exercised`,
+      hostPhaseRpcCalls: `${config.rounds * 4 + leaderboardTransitionCount(config.rounds)} before an optional end action when all saved-game rounds are exercised`,
       exactRoomCleanup: 5,
     },
     realtime: {
       websocketConnections: config.participants,
       privateChannels: config.participants,
       browserObserverConnections: config.browserObservers ? 2 : 0,
-      phaseBroadcastDeliveriesBeforeOptionalEnd: config.rounds * 4 * config.participants - lateClients,
+      phaseBroadcastDeliveriesBeforeOptionalEnd: (config.rounds * 4 + leaderboardTransitionCount(config.rounds)) * config.participants - lateClients,
       optionalEndBroadcastDeliveries: config.participants,
       samePhaseJoinAndAnswerDeliveries: 0,
       baselineBeforeSuppression: `approximately ${Math.round(config.participants * (config.participants + 1) / 2 + config.rounds * config.participants ** 2).toLocaleString()} join/answer deliveries if the previous every-snapshot fan-out were retained`,
@@ -180,7 +196,7 @@ function estimate(config) {
 
 const HOST_ACTION_LABEL = {
   start: 'Start round', lock: 'Lock answers', reveal: 'Reveal teammate',
-  show_results: 'Show results', next_round: 'Next round', end: 'Finish game',
+  show_results: 'Show results', show_leaderboard: 'Show leaderboard', next_round: 'Next round', end: 'Finish game',
 };
 
 async function openBrowserObservers(config, origin, room) {
@@ -225,7 +241,8 @@ async function openBrowserObservers(config, origin, room) {
   const nextLabel = (phase, roundIndex) => phase === 'question_open' ? 'Lock answers'
     : phase === 'answers_locked' ? 'Reveal teammate'
       : phase === 'employee_revealed' ? 'Show results'
-        : phase === 'results_displayed' ? (roundIndex === config.rounds - 1 ? 'Finish game' : 'Next round')
+        : phase === 'results_displayed' ? (roundIndex === 0 || roundIndex === config.rounds - 1 ? 'Show leaderboard' : 'Next round')
+          : phase === 'leaderboard_displayed' ? (roundIndex === config.rounds - 1 ? 'Finish game' : 'Next round')
           : phase === 'complete' ? 'Play again' : 'Start round';
   const imageReady = async () => {
     await displayPage.locator('.portrait-chamber img').evaluate((image) => new Promise((resolvePromise, reject) => {
@@ -254,7 +271,7 @@ async function openBrowserObservers(config, origin, room) {
         await imageReady();
       }
       report.transitionObservations.push({ phase, roundIndex, hostLatencyMs, displayLatencyMs });
-      if (config.output && roundIndex === 0 && ['question_open', 'employee_revealed', 'results_displayed'].includes(phase)) {
+      if (config.output && roundIndex === 0 && ['question_open', 'employee_revealed', 'results_displayed', 'leaderboard_displayed'].includes(phase)) {
         const path = resolve(dirname(config.output), `${config.participants}-display-${phase}.png`);
         await displayPage.screenshot({ path, animations: 'disabled' });
         report.screenshots.push(path);
@@ -338,6 +355,9 @@ class Metrics {
   transitions = [];
   capacityBoundary = { attempted: 0, rejectedRoomFull: 0, failed: 0 };
   answerLockRace = [];
+  scoring = { rounds: [], ledgerRows: 0, expectedTotalPoints: 0, actualTotalPoints: 0, mismatches: 0 };
+  leaderboard = { checks: [], personalRankChecks: 0, mismatches: 0 };
+  personalHydrationLatencies = [];
 
   error(category) { this.errors[category] = (this.errors[category] ?? 0) + 1; }
 }
@@ -364,9 +384,12 @@ class ParticipantClient {
     const joinStarted = performance.now();
     this.metrics.joins.attempted += 1;
     const joinOperation = { participantToken: randomToken(), idempotencyKey: randomUUID() };
+    const displayName = this.index < 2
+      ? `Capacity ${this.context.runId} Chris`
+      : `Capacity ${this.context.runId} ${String(this.index + 1).padStart(3, '0')}`;
     const joined = await this.context.pagesJson(`/api/rooms/${this.context.room.code}/join`, {
       method: 'POST', body: {
-        name: `Capacity ${this.context.runId} ${String(this.index + 1).padStart(3, '0')}`,
+        name: displayName,
         ...joinOperation,
       },
     });
@@ -379,7 +402,7 @@ class ParticipantClient {
       try {
         const retried = await this.context.pagesJson(`/api/rooms/${this.context.room.code}/join`, {
           method: 'POST', body: {
-            name: `Capacity ${this.context.runId} ${String(this.index + 1).padStart(3, '0')}`,
+            name: displayName,
             ...joinOperation,
           },
         });
@@ -517,6 +540,12 @@ class ParticipantClient {
       this.nextInvalidationAllowedAt = 0;
       if (payload.snapshot) this.applySnapshot(payload.snapshot, 'realtime-push');
       else void this.fetchSnapshot('realtime-transition');
+      if (['employee_revealed', 'leaderboard_displayed', 'complete'].includes(payload.phase)) {
+        const started = performance.now();
+        void this.fetchSnapshot('personalized-transition').then((ok) => {
+          if (ok) this.metrics.personalHydrationLatencies.push(performance.now() - started);
+        });
+      }
       return;
     }
     if (payload.version <= this.currentVersion) return;
@@ -541,7 +570,7 @@ class ParticipantClient {
     const payload = await this.context.pagesJson(`/api/rooms/${this.context.room.code}/answers`, {
         method: 'POST',
         headers: { authorization: `Bearer ${this.participantToken}` },
-        body: { playerId: this.playerId, choiceId },
+        body: { playerId: this.playerId, choiceId, roundIndex: this.currentSnapshot?.roundIndex },
         expectedErrors,
       });
     return { answer: payload.answer, latency: performance.now() - started };
@@ -581,6 +610,8 @@ class ParticipantClient {
       this.metrics.answers.successful += 1;
       this.metrics.answers.acceptedByRound[roundIndex] = (this.metrics.answers.acceptedByRound[roundIndex] ?? 0) + 1;
       this.lastAnswerChoiceId = choiceId;
+      this.answersByRound ??= new Map();
+      this.answersByRound.set(roundIndex, choiceId);
       return { outcome: 'accepted' };
     } catch (error) {
       if (allowAnswersClosed && error.category === 'ANSWERS_CLOSED') {
@@ -696,6 +727,10 @@ async function run(config, target) {
     metrics.http.supabaseClientHttp += 1;
     return fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30_000) });
   };
+  const audit = createClient(supabaseUrl, process.env.SUPABASE_SECRET_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: measuredSupabaseFetch },
+  });
   const pagesJson = async (path, options = {}) => {
     metrics.http.total += 1;
     metrics.http.pagesFunctions += 1;
@@ -720,6 +755,7 @@ async function run(config, target) {
   };
   const context = {
     config, metrics, runId, supabaseUrl, publishableKey, measuredSupabaseFetch,
+    correctChoiceByRound: new Map(),
     pagesJson, duplicateJoinCount: Math.ceil(config.participants * config.duplicatePercent / 100),
     get room() { return room; },
     get activeTransition() { return activeTransition; },
@@ -799,6 +835,143 @@ async function run(config, target) {
     activeTransition = null;
   };
 
+  const verifyScoring = async (roundIndex, verifyLeaderboard) => {
+    const [questionRead, playersRead] = await Promise.all([
+      audit.from('session_questions').select('id,position,opened_at').eq('room_id', room.roomId).lte('position', roundIndex).order('position'),
+      audit.from('players').select('id,display_name,eligible_from_round,total_score,correct_answer_count,correct_response_ms,current_streak').eq('room_id', room.roomId),
+    ]);
+    for (const result of [questionRead, playersRead]) if (result.error) throw result.error;
+    const questions = questionRead.data ?? [];
+    const questionIds = questions.map((question) => question.id);
+    const [choicesRead, answersRead] = await Promise.all([
+      audit.from('session_choices').select('id,question_id,is_correct').in('question_id', questionIds),
+      audit.from('session_answers').select('room_id,question_id,player_id,choice_id,submitted_at,authoritative_elapsed_ms,is_correct,points_awarded,streak_before,streak_after').in('question_id', questionIds),
+    ]);
+    if (choicesRead.error) throw choicesRead.error;
+    if (answersRead.error) throw answersRead.error;
+    const positionByQuestion = new Map(questions.map((question) => [question.id, question.position]));
+    const correctByQuestion = new Map((choicesRead.data ?? []).filter((choice) => choice.is_correct).map((choice) => [choice.question_id, choice.id]));
+    const answers = answersRead.data ?? [];
+    const answerByPlayerRound = new Map();
+    let expectedRoundPoints = 0;
+    let actualRoundPoints = 0;
+    let roundRows = 0;
+    const openedByQuestion = new Map(questions.map((question) => [question.id, Date.parse(question.opened_at ?? '')]));
+    for (const answer of answers) {
+      const position = positionByQuestion.get(answer.question_id);
+      const expectedCorrect = correctByQuestion.get(answer.question_id) === answer.choice_id;
+      const elapsed = Number(answer.authoritative_elapsed_ms);
+      const expectedPoints = expectedCorrect ? scoreForElapsed(elapsed) : 0;
+      if (!Number.isInteger(elapsed) || elapsed < 0 || elapsed > 86_400_000
+        || answer.is_correct !== expectedCorrect || Number(answer.points_awarded) !== expectedPoints) {
+        metrics.scoring.mismatches += 1;
+        throw new Error(`Authoritative score ledger mismatch for player ${answer.player_id}, round ${position}.`);
+      }
+      if (position === roundIndex) {
+        roundRows += 1;
+        expectedRoundPoints += expectedPoints;
+        actualRoundPoints += Number(answer.points_awarded);
+        const openedAt = openedByQuestion.get(answer.question_id);
+        const acceptedAt = Date.parse(answer.submitted_at ?? '');
+        if (Number.isFinite(openedAt) && Number.isFinite(acceptedAt)) {
+          const timestampElapsed = Math.max(0, Math.min(86_400_000, Math.floor(acceptedAt - openedAt)));
+          if (Math.abs(timestampElapsed - elapsed) > 2 || (expectedCorrect && Math.abs(scoreForElapsed(timestampElapsed) - expectedPoints) > 1)) {
+            metrics.scoring.mismatches += 1;
+            throw new Error(`Accepted/open timestamp oracle mismatch for player ${answer.player_id}, round ${position}.`);
+          }
+        }
+      }
+      answerByPlayerRound.set(`${answer.player_id}:${position}`, answer);
+    }
+
+    const computed = [];
+    for (const player of playersRead.data ?? []) {
+      let totalScore = 0;
+      let correctAnswers = 0;
+      let totalCorrectElapsed = 0;
+      let streak = 0;
+      for (let position = 0; position <= roundIndex; position += 1) {
+        if (position < Number(player.eligible_from_round)) continue;
+        const answer = answerByPlayerRound.get(`${player.id}:${position}`);
+        if (!answer) { streak = 0; continue; }
+        const before = streak;
+        streak = answer.is_correct ? streak + 1 : 0;
+        if (Number(answer.streak_before) !== before || Number(answer.streak_after) !== streak) {
+          metrics.scoring.mismatches += 1;
+          throw new Error(`Streak ledger mismatch for player ${player.id}, round ${position}.`);
+        }
+        totalScore += Number(answer.points_awarded);
+        if (answer.is_correct) {
+          correctAnswers += 1;
+          totalCorrectElapsed += Number(answer.authoritative_elapsed_ms);
+        }
+      }
+      if (Number(player.total_score) !== totalScore || Number(player.correct_answer_count) !== correctAnswers
+        || Number(player.correct_response_ms) !== totalCorrectElapsed || Number(player.current_streak) !== streak) {
+        metrics.scoring.mismatches += 1;
+        throw new Error(`Player scoring aggregate mismatch for ${player.id}.`);
+      }
+      computed.push({ id: player.id, displayName: player.display_name, totalScore, correctAnswers, totalCorrectElapsed });
+    }
+    computed.sort((left, right) => right.totalScore - left.totalScore
+      || right.correctAnswers - left.correctAnswers
+      || left.totalCorrectElapsed - right.totalCorrectElapsed
+      || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+    const ranked = computed.map((entry, index) => ({ ...entry, rank: index + 1 }));
+    const duplicateNames = new Map();
+    for (const player of ranked) duplicateNames.set(player.displayName, (duplicateNames.get(player.displayName) ?? 0) + 1);
+    if (![...duplicateNames.values()].some((count) => count > 1)) {
+      metrics.leaderboard.mismatches += 1;
+      throw new Error('Capacity scoring fixture did not preserve duplicate display-name identities.');
+    }
+    if (roundIndex === config.rounds - 1) {
+      const zeroScores = ranked.filter((player) => player.totalScore === 0);
+      if (zeroScores.length < 2 || zeroScores.some((player, index) => index > 0 && zeroScores[index - 1].id > player.id)) {
+        metrics.leaderboard.mismatches += 1;
+        throw new Error('Capacity scoring fixture did not prove deterministic zero-score tie ordering.');
+      }
+    }
+    const expectedAccepted = metrics.answers.acceptedByRound[roundIndex] ?? 0;
+    if (roundRows !== expectedAccepted || expectedRoundPoints !== actualRoundPoints) {
+      metrics.scoring.mismatches += 1;
+      throw new Error(`Round ${roundIndex} scoring totals do not match accepted answers.`);
+    }
+    metrics.scoring.ledgerRows = answers.length;
+    metrics.scoring.expectedTotalPoints = ranked.reduce((sum, player) => sum + player.totalScore, 0);
+    metrics.scoring.actualTotalPoints = (playersRead.data ?? []).reduce((sum, player) => sum + Number(player.total_score), 0);
+    metrics.scoring.rounds.push({ roundIndex, acceptedAnswers: roundRows, expectedPoints: expectedRoundPoints, actualPoints: actualRoundPoints });
+
+    if (verifyLeaderboard) {
+      const board = participants[0]?.currentSnapshot?.leaderboard;
+      const expectedTop = ranked.slice(0, roundIndex === config.rounds - 1 ? 10 : 5)
+        .map(({ rank, displayName, totalScore, correctAnswers }) => ({ rank, displayName, totalScore, correctAnswers }));
+      if (!board || board.isFinal !== (roundIndex === config.rounds - 1)
+        || board.entries.length !== expectedTop.length
+        || board.entries.some((entry, index) => {
+          const expected = expectedTop[index];
+          return entry.rank !== expected.rank || entry.displayName !== expected.displayName
+            || entry.totalScore !== expected.totalScore || entry.correctAnswers !== expected.correctAnswers;
+        })) {
+        metrics.leaderboard.mismatches += 1;
+        throw new Error(`Public leaderboard mismatch for round ${roundIndex}.`);
+      }
+      await Promise.all(participants.map(async (participant) => {
+        const started = performance.now();
+        if (!(await participant.fetchSnapshot('leaderboard-oracle'))) throw new Error('Personal rank hydration failed.');
+        metrics.personalHydrationLatencies.push(performance.now() - started);
+        const expected = ranked.find((entry) => entry.id === participant.playerId);
+        const standing = participant.participantState?.standing;
+        if (!expected || !standing || standing.rank !== expected.rank || standing.totalScore !== expected.totalScore
+          || participant.participantState.totalScore !== expected.totalScore) {
+          metrics.leaderboard.mismatches += 1;
+          throw new Error(`Personal rank mismatch for player ${participant.playerId}.`);
+        }
+        metrics.leaderboard.personalRankChecks += 1;
+      }));
+      metrics.leaderboard.checks.push({ roundIndex, isFinal: board.isFinal, entries: board.entries });
+    }
+  };
+
   let primaryError = null;
   let cleanupError = null;
   try {
@@ -813,6 +986,15 @@ async function run(config, target) {
     if (config.rounds > lobby.snapshot.roundCount) {
       throw new Error(`Requested ${config.rounds} rounds, but the saved game has ${lobby.snapshot.roundCount}.`);
     }
+    const fixtureQuestions = await audit.from('session_questions').select('id,position').eq('room_id', room.roomId).lt('position', config.rounds);
+    if (fixtureQuestions.error) throw fixtureQuestions.error;
+    const fixtureChoices = await audit.from('session_choices').select('id,question_id,is_correct').in('question_id', (fixtureQuestions.data ?? []).map((question) => question.id));
+    if (fixtureChoices.error) throw fixtureChoices.error;
+    const fixturePosition = new Map((fixtureQuestions.data ?? []).map((question) => [question.id, question.position]));
+    for (const choice of fixtureChoices.data ?? []) {
+      if (choice.is_correct) context.correctChoiceByRound.set(fixturePosition.get(choice.question_id), choice.id);
+    }
+    if (context.correctChoiceByRound.size !== config.rounds) throw new Error('Capacity fixture must expose exactly one correct choice per exercised round.');
     if (config.browserObservers) {
       browserObservers = await openBrowserObservers(config, target.origin, room);
       // Browser process startup is fixture setup, not load-generator saturation.
@@ -882,7 +1064,14 @@ async function run(config, target) {
       const raceParticipants = raceCount ? participants.slice(-raceCount) : [];
       const answerTasks = normalParticipants.map(async (participant, index) => {
         await sleep(config.answerWindowMs ? Math.round(index * config.answerWindowMs / Math.max(1, normalParticipants.length - 1)) : 0);
-        const choiceId = participant.currentSnapshot.choices[index % participant.currentSnapshot.choices.length].id;
+        const correctChoiceId = context.correctChoiceByRound.get(roundIndex);
+        const cohort = participant.index % 5;
+        const shouldAnswerCorrectly = cohort === 0
+          || (cohort === 1 && roundIndex !== 1)
+          || (cohort === 3 && roundIndex % 2 === 0);
+        const choiceId = shouldAnswerCorrectly
+          ? correctChoiceId
+          : participant.currentSnapshot.choices.find((choice) => choice.id !== correctChoiceId).id;
         const alternative = participant.currentSnapshot.choices.find((choice) => choice.id !== choiceId)?.id;
         await participant.answer(choiceId, alternative, index < duplicateCount, roundIndex);
       });
@@ -900,7 +1089,10 @@ async function run(config, target) {
         const raceGate = new Promise((resolvePromise) => { releaseRace = resolvePromise; });
         const raceAnswers = raceParticipants.map(async (participant, offset) => {
           await raceGate;
-          const choiceId = participant.currentSnapshot.choices[(normalParticipants.length + offset) % participant.currentSnapshot.choices.length].id;
+          const correctChoiceId = context.correctChoiceByRound.get(roundIndex);
+          const choiceId = (normalParticipants.length + offset) % 2 === 0
+            ? correctChoiceId
+            : participant.currentSnapshot.choices.find((choice) => choice.id !== correctChoiceId).id;
           const alternative = participant.currentSnapshot.choices.find((choice) => choice.id !== choiceId)?.id;
           return participant.answer(choiceId, alternative, false, roundIndex, true);
         });
@@ -935,6 +1127,9 @@ async function run(config, target) {
       }
       await hostAction('reveal', 'employee_revealed', roundIndex);
       await hostAction('show_results', 'results_displayed', roundIndex);
+      const showLeaderboard = roundIndex === 0 || roundIndex === config.rounds - 1;
+      if (showLeaderboard) await hostAction('show_leaderboard', 'leaderboard_displayed', roundIndex);
+      await verifyScoring(roundIndex, showLeaderboard);
     }
     if (config.rounds === lobby.snapshot.roundCount) await hostAction('end', 'complete', config.rounds - 1);
   } catch (error) {
@@ -972,7 +1167,8 @@ async function run(config, target) {
     Math.ceil(config.participants * config.reconnectPercent / 100),
     config.participants - boundedLockRaceCount(config),
   );
-  const expectedTransitions = config.rounds * 4 + (metrics.transitions.some((transition) => transition.phase === 'complete') ? 1 : 0);
+  const expectedTransitions = config.rounds * 4 + leaderboardTransitionCount(config.rounds)
+    + (metrics.transitions.some((transition) => transition.phase === 'complete') ? 1 : 0);
   const hasUnexpectedErrors = Object.keys(metrics.errors).length > 0;
   const invariantFailures = [];
   if (metrics.joins.successful !== config.participants || metrics.joins.failed !== 0) invariantFailures.push('join totals');
@@ -983,6 +1179,10 @@ async function run(config, target) {
   if (metrics.answers.duplicateProbeFailures !== 0
     || metrics.answers.idempotentDuplicates !== expectedDuplicates * config.rounds
     || metrics.answers.immutableDuplicates !== expectedDuplicates * config.rounds) invariantFailures.push('answer idempotency/immutability');
+  if (metrics.scoring.mismatches !== 0 || metrics.scoring.rounds.length !== config.rounds
+    || metrics.scoring.expectedTotalPoints !== metrics.scoring.actualTotalPoints) invariantFailures.push('authoritative score ledger/aggregates');
+  if (metrics.leaderboard.mismatches !== 0 || metrics.leaderboard.checks.length !== leaderboardTransitionCount(config.rounds)
+    || metrics.leaderboard.personalRankChecks !== config.participants * leaderboardTransitionCount(config.rounds)) invariantFailures.push('leaderboard/personal ranks');
   if (metrics.reconnect.attempted !== expectedReconnects || metrics.reconnect.successful !== expectedReconnects
     || metrics.reconnect.identityRecovered !== expectedReconnects
     || metrics.reconnect.idempotentResubmits !== expectedReconnects || metrics.reconnect.failed !== 0) invariantFailures.push('reconnect recovery');
@@ -1027,6 +1227,9 @@ async function run(config, target) {
       joinLatency: summarize(metrics.joinLatencies),
       participantReadyLatency: summarize(metrics.readyLatencies),
       answerLatency: summarize(metrics.answerLatencies),
+      personalHydrationLatency: summarize(metrics.personalHydrationLatencies),
+      scoring: metrics.scoring,
+      leaderboard: metrics.leaderboard,
       transitions: metrics.transitions,
       reconnect: metrics.reconnect,
       capacityBoundary: metrics.capacityBoundary,

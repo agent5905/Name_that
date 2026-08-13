@@ -159,10 +159,10 @@ export async function getRevealKey(code: string, choiceId: string): Promise<Reve
   return requestJson(`/api/rooms/${code}/reveal-key/${choiceId}`);
 }
 
-export async function submitAnswer(code: string, token: string, playerId: string, choiceId: string) {
+export async function submitAnswer(code: string, token: string, playerId: string, choiceId: string, roundIndex: number) {
   return requestJson<{ answer: { accepted: boolean; idempotent: boolean; employeeId: string } }>(
     `/api/rooms/${code}/answers`,
-    { method: 'POST', token, body: { playerId, choiceId } },
+    { method: 'POST', token, body: { playerId, choiceId, roundIndex } },
   );
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mergeCountOnlySnapshot, parsePushedSnapshot, preserveRevealEnrichment, shouldReplaceSnapshot } from './snapshot';
 
 const id='11111111-1111-4111-8111-111111111111';
-const base={roomCode:'F7K2M',phase:'employee_revealed',roundIndex:0,roundCount:2,connectedParticipantCount:2,eligibleParticipantCount:2,submittedAnswerCount:2,version:8,choices:[{id,displayName:'Alex',position:0},{id:'22222222-2222-4222-8222-222222222222',displayName:'Sam',position:1}],revealedEmployee:{id,displayName:'Alex',team:null,funFact:'Fact',mediaAvailable:true,mediaKey:'F7K2M:0:reveal',revealKey:{key:'A'.repeat(43),iv:'B'.repeat(16),mimeType:'image/png',aad:`name-that:${id}:22222222-2222-4222-8222-222222222222`}},results:null,updatedAt:'2026-08-12T00:00:00Z',prompt:'Who?',mysteryImageUrl:null,silhouetteUrl:null,preloadAssets:[]};
+const base={roomCode:'F7K2M',phase:'employee_revealed',roundIndex:0,roundCount:2,connectedParticipantCount:2,eligibleParticipantCount:2,submittedAnswerCount:2,version:8,choices:[{id,displayName:'Alex',position:0},{id:'22222222-2222-4222-8222-222222222222',displayName:'Sam',position:1}],revealedEmployee:{id,displayName:'Alex',team:null,funFact:'Fact',mediaAvailable:true,mediaKey:'F7K2M:0:reveal',revealKey:{key:'A'.repeat(43),iv:'B'.repeat(16),mimeType:'image/png',aad:`name-that:${id}:22222222-2222-4222-8222-222222222222`}},results:null,leaderboard:null,updatedAt:'2026-08-12T00:00:00Z',prompt:'Who?',mysteryImageUrl:null,silhouetteUrl:null,preloadAssets:[]};
 
 describe('pushed snapshot parser',()=>{
   it('accepts a complete phase-gated reveal projection',()=>expect(parsePushedSnapshot(base,'F7K2M',8,'employee_revealed')).not.toBeNull());
@@ -19,6 +19,13 @@ describe('pushed snapshot parser',()=>{
     for(const url of ['/api/rooms/F7K2M/../N8W2Q/mystery-preload?round=0&asset=11111111-1111-4111-8111-111111111111','/api/rooms/F7K2M/%2e%2e/N8W2Q/mystery-preload?round=0&asset=11111111-1111-4111-8111-111111111111','/api/rooms/F7K2M/mystery-preload?round=0&asset=11111111-1111-4111-8111-111111111111&x=1','/api/rooms/F7K2M/reveal-preload?round=0&asset=11111111-1111-4111-8111-111111111111']){
       expect(parsePushedSnapshot({...base,preloadAssets:[{key:'F7K2M:0:mystery',kind:'mystery',roundIndex:0,url}]},'F7K2M',8,'employee_revealed')).toBeNull();
     }
+  });
+  it('accepts a bounded deterministic leaderboard only in disclosed phases',()=>{
+    const leaderboard={isFinal:false,entries:[{rank:1,displayName:'Chris',totalScore:1938,correctAnswers:2},{rank:2,displayName:'Chris',totalScore:1750,correctAnswers:2}]};
+    expect(parsePushedSnapshot({...base,phase:'leaderboard_displayed',results:{totalAnswers:2,correctAnswers:2,choices:[{employeeId:id,count:2}]},leaderboard},'F7K2M',8,'leaderboard_displayed')?.leaderboard).toEqual(leaderboard);
+    expect(parsePushedSnapshot({...base,leaderboard},'F7K2M',8,'employee_revealed')).toBeNull();
+    expect(parsePushedSnapshot({...base,phase:'leaderboard_displayed',leaderboard:{...leaderboard,entries:[{...leaderboard.entries[0],rank:2}]}},'F7K2M',8,'leaderboard_displayed')).toBeNull();
+    expect(parsePushedSnapshot({...base,phase:'complete',leaderboard},'F7K2M',8,'complete')).toBeNull();
   });
 });
 

@@ -241,8 +241,12 @@ async function completeFromLobby(
       expect(mysterySources).not.toContain(await reveal.getAttribute('src') ?? '');
       if (funFacts[round]) await expect(client.getByText(funFacts[round], { exact: false })).toBeVisible();
     }
-    await clickHostAction(page, /Show results/, round === roundCount - 1 ? /Finish game/ : /Next round/);
+    await clickHostAction(page, /Show results/, round === roundCount - 1 ? /Show final leaderboard/ : /Next round/);
     if (round === roundCount - 1) {
+      await clickHostAction(page, /Show final leaderboard/, /Finish game/);
+      for (const client of [display, participant].filter((candidate): candidate is Page => Boolean(candidate))) {
+        await expect(client.getByText(/points/).first()).toBeVisible({ timeout: ACTION_TIMEOUT });
+      }
       await page.getByRole('button', { name: /Finish game/ }).click();
       await expect(page.getByRole('button', { name: /Play again/ })).toBeVisible({ timeout: ACTION_TIMEOUT });
     } else {
@@ -371,7 +375,10 @@ async function finishViaApi(page: Page, host: HostIdentity, rounds = 2) {
     await apiHostAction(page, host, 'lock');
     await apiHostAction(page, host, 'reveal');
     await apiHostAction(page, host, 'show_results');
-    await apiHostAction(page, host, index === rounds - 1 ? 'end' : 'next_round');
+    if (index === rounds - 1) {
+      await apiHostAction(page, host, 'show_leaderboard');
+      await apiHostAction(page, host, 'end');
+    } else await apiHostAction(page, host, 'next_round');
   }
   completedCodes.add(host.code);
 }
@@ -554,6 +561,7 @@ test.describe.serial('real Pages + Supabase acceptance journeys A–H', () => {
     await apiHostAction(page, a, 'lock');
     await apiHostAction(page, a, 'reveal');
     await apiHostAction(page, a, 'show_results');
+    await apiHostAction(page, a, 'show_leaderboard');
     await apiHostAction(page, a, 'end');
     completedCodes.add(a.code);
     const b = await createReplayViaApi(page, a);
@@ -660,7 +668,8 @@ test.describe.serial('real Pages + Supabase acceptance journeys A–H', () => {
     await page.getByRole('button', { name: /Next round/ }).click();
     await clickHostAction(page, /Lock answers/, /Reveal teammate/);
     await clickHostAction(page, /Reveal teammate/, /Show results/);
-    await clickHostAction(page, /Show results/, /Finish game/);
+    await clickHostAction(page, /Show results/, /Show final leaderboard/);
+    await clickHostAction(page, /Show final leaderboard/, /Finish game/);
     await page.getByRole('button', { name: /Finish game/ }).click();
     await expect(page.getByRole('button', { name: /Play again/ })).toBeVisible({ timeout: ACTION_TIMEOUT });
     completedCodes.add(host.code);
@@ -730,7 +739,8 @@ test.describe.serial('real Pages + Supabase acceptance journeys A–H', () => {
       await clickHostAction(page, /Lock answers/, /Reveal teammate/);
       await clickHostAction(page, /Reveal teammate/, /Show results/);
       expect(dialogs).toEqual([]);
-      await clickHostAction(page, /Show results/, /Finish game/);
+      await clickHostAction(page, /Show results/, /Show final leaderboard/);
+      await clickHostAction(page, /Show final leaderboard/, /Finish game/);
       await page.getByRole('button', { name: /Finish game/ }).click();
       await expect(page.getByRole('button', { name: /Play again/ })).toBeVisible({ timeout: ACTION_TIMEOUT });
       completedCodes.add(host.code);
@@ -799,7 +809,17 @@ test.describe.serial('real Pages + Supabase acceptance journeys A–H', () => {
       await expectImageReady(display.locator('.portrait-chamber.is-revealed img'));
       await expectImageReady(participant.locator('.portrait-chamber.is-revealed img'));
       await expect(display.getByText('Once hosted a community radio show about delightfully obscure inventions.', { exact: false })).toBeVisible();
-      await clickHostAction(page, /Show results/, /Next round/);
+      const roundTwoPaths = preloadDescriptors(openSnapshot)
+        .filter((asset) => Number(asset.roundIndex) === 1)
+        .map((asset) => new URL(String(asset.url), display.url()).href);
+      const requestCount = (path: string) => displayProbe.assets.filter((event) => event.type === 'request' && event.url === path).length;
+      expect(roundTwoPaths).toHaveLength(2);
+      for (const path of roundTwoPaths) expect(requestCount(path), `expected one prepared request before leaderboard: ${path}`).toBe(1);
+      await clickHostAction(page, /Show results/, /Show leaderboard/);
+      await clickHostAction(page, /Show leaderboard/, /Next round/);
+      await expect(display.getByRole('heading', { name: 'Leaderboard' })).toBeVisible({ timeout: ACTION_TIMEOUT });
+      await page.waitForTimeout(1_500);
+      for (const path of roundTwoPaths) expect(requestCount(path), `leaderboard must not duplicate preload: ${path}`).toBe(1);
       await installMysteryRenderProbe(display);
       const nextRoundClickedAt = Date.now();
       await page.getByRole('button', { name: /Next round/ }).click();
@@ -808,6 +828,7 @@ test.describe.serial('real Pages + Supabase acceptance journeys A–H', () => {
       const roundTwoRenderedAt = await expect.poll(() => display.evaluate(() => window.__nameThatMysteryRenderedAt ?? 0), { timeout: 10_000 }).toBeGreaterThan(0).then(() => display.evaluate(() => window.__nameThatMysteryRenderedAt!));
       const roundTwoLatencyMs = roundTwoRenderedAt - nextRoundClickedAt;
       expect(roundTwoLatencyMs, 'next mystery must render from preloaded bytes').toBeLessThanOrEqual(REVEAL_RENDER_TARGET_MS);
+      for (const path of roundTwoPaths) expect(requestCount(path), `next round must reuse preload: ${path}`).toBe(1);
       const timingEvidence = {
         targetMs: REVEAL_RENDER_TARGET_MS,
         displayRevealMs: displayTiming.latencyMs,

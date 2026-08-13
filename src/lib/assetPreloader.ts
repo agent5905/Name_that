@@ -1,3 +1,5 @@
+import type { GamePhase } from '../domain/game';
+
 export interface PreloadAsset {
   readonly key: string;
   readonly kind: 'mystery' | 'reveal-encrypted';
@@ -13,7 +15,7 @@ export interface RevealKey {
 }
 
 export interface PreloadSchedule {
-  readonly phase: 'lobby' | 'question_open' | 'answers_locked' | 'employee_revealed' | 'results_displayed' | 'complete';
+  readonly phase: GamePhase;
   readonly currentRound: number | null;
   readonly seed: string;
 }
@@ -68,6 +70,11 @@ function preloadDelay(asset: PreloadAsset, schedule: PreloadSchedule): number | 
   if (schedule.currentRound === null) return null;
   const distance = asset.roundIndex - schedule.currentRound;
   if (distance < 0 || distance > 1) return null;
+  if (schedule.phase === 'leaderboard_displayed') {
+    // A cold join/refresh does not need the already-revealed round. Use the
+    // leaderboard interlude to make the next mystery and reveal immediately ready.
+    return distance === 1 ? 0 : null;
+  }
   if (distance === 0 && asset.kind === 'mystery') return 0;
   if (distance === 0) {
     if (schedule.phase === 'answers_locked' || schedule.phase === 'employee_revealed' || schedule.phase === 'results_displayed') return 0;

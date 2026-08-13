@@ -1,5 +1,7 @@
 # 175-person capacity checkpoint
 
+> Scoring renewal notice: the historical evidence below remains valid for the pre-scoring deployment, but it does not certify the modified scoring answer path. The scoring release must pass fresh ordered 5, 25, 100, 175, and 225 stages. Append its deployed commit, deployment ID, score-ledger and leaderboard integrity, answer/personal-hydration latency, Realtime delivery, database observations, and browser/preload evidence without replacing this history.
+
 ## Release conclusion
 
 **PASS.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. All staged protocol runs, including the first full 225-participant rehearsal with real host/display browsers, passed and cleaned up exactly. The complete 11-journey production browser gauntlet also passed after honoring the image-upload limiter's `Retry-After` window. Cloudflare GraphQL CPU quantiles remain unavailable to the configured token, but the actual worst tested endpoint mix produced no server/resource-limit response and consumed only 1.671% of the documented 100,000-request/day Workers Free floor. An independent final critic accepted that measured conservative evidence; the missing analytics permission is not a release blocker for one normal event.
@@ -35,6 +37,8 @@ At 225 participants, a 60-second participant safety poll averages 3.75 Pages Fun
 ## Staged load matrix
 
 Run the checked-in protocol harness in order. Stop on unexplained errors, failed cleanup, resource saturation, or materially rising p95/max latency. Do not run 175 or 225 repeatedly after unrelated UI-only changes.
+
+For the scoring renewal, use 5 → 25 → 100 → 175 → 225. The three-round fixture shows the optional leaderboard after Round 1, skips it after Round 2, and requires the final leaderboard before completion. Each stage must independently reconstruct points from the question-open/accepted timing ledger, validate player aggregates and streaks, compare deterministic Top 5/Top 10 order and every participant's personal rank, and retain the strict zero same-phase/per-answer Broadcast gate. Record personalized hydration latency because Reveal and Leaderboard now require an authenticated projection in addition to the global phase push.
 
 | Stage | Purpose | Evidence file | Result |
 | ---: | --- | --- | --- |

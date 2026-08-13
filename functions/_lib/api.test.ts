@@ -4,9 +4,10 @@ import {
   parseCleanupRealtimeAuth, parseCleanupRooms, parseCreatedRoom, parseHostRoom, parseJoinedParticipant,
   parseMediaByteLimit, parseRoomCreationLimit, parseSubmittedAnswer, readJson, requireAction, roomCode,
   roomCreationSourceHash, throwRpcError, tokenHash, uuid,
-  preloadCacheKey, preloadQuery, realtimeAnonToken,
+  preloadCacheKey, preloadQuery, realtimeAnonToken, expectedRound, parseParticipantState,
 } from './api';
 import { definition } from '../api/games/index';
+import { answerRequest } from '../api/rooms/[code]/answers';
 
 describe('API boundary validation', () => {
   it('rejects discarded definition fields and validates explicit image/fun-fact content early',()=>{
@@ -33,6 +34,9 @@ describe('API boundary validation', () => {
     expect(uuid('550e8400-e29b-41d4-a716-446655440000')).toContain('550e');
     expect(() => uuid('not-an-id')).toThrow(ApiError);
     expect(requireAction('show_results')).toBe('show_results');
+    expect(requireAction('show_leaderboard')).toBe('show_leaderboard');
+    expect(expectedRound(99)).toBe(99);
+    expect(()=>expectedRound(-1)).toThrow(ApiError);
     expect(() => requireAction('skip')).toThrow(ApiError);
     expect(bearerToken(new Request('https://example.test', { headers: { authorization: `Bearer ${'a'.repeat(43)}` } }))).toHaveLength(43);
   });
@@ -115,7 +119,7 @@ describe('credential primitives and service errors', () => {
     expect(parseCreatedRoom({ roomId: id, code: 'AH2Z9', secret: 'drop' })).toEqual({ roomId: id, code: 'AH2Z9' });
     expect(parseJoinedParticipant({ playerId: id, roomId: id, displayName: 'Ada', eligibleFromRound: 0, hash: 'drop' })).toEqual({ playerId: id, roomId: id, displayName: 'Ada', eligibleFromRound: 0 });
     expect(() => parseJoinedParticipant({ playerId: id, roomId: id, displayName: 'Ada', eligibleFromRound: -1 })).toThrow();
-    expect(parseSubmittedAnswer({ accepted: true, idempotent: false, employeeId: id, rawVote: 'drop' })).toEqual({ accepted: true, idempotent: false, employeeId: id });
+    expect(parseSubmittedAnswer({ accepted: true, idempotent: false, employeeId: id, roundIndex:2, rawVote: 'drop' })).toEqual({ accepted: true, idempotent: false, employeeId: id, roundIndex:2 });
     expect(parseHostRoom({
       roomId: id, code: 'AH2Z9', phase: 'question_open', currentRound: 0,
       roundCount: 4, isFinalRound: false,
@@ -127,7 +131,24 @@ describe('credential primitives and service errors', () => {
       correctEmployee: { id, displayName: 'Ada', team: 'Engineering' }, version: 2,
     });
     expect(() => parseCreatedRoom({ roomId: id, code: 'bad' })).toThrow('Invalid data service response.');
-    expect(() => parseSubmittedAnswer({ accepted: 'yes', idempotent: false, employeeId: id })).toThrow('Invalid data service response.');
+    expect(() => parseSubmittedAnswer({ accepted: 'yes', idempotent: false, employeeId: id, roundIndex:0 })).toThrow('Invalid data service response.');
+  });
+
+  it('rejects answer authority fields and validates the frozen personal scoring contract',()=>{
+    const id='550e8400-e29b-41d4-a716-446655440000';
+    expect(answerRequest({playerId:id,choiceId:id,roundIndex:3})).toEqual({playerId:id,choiceId:id,roundIndex:3});
+    for(const field of ['score','elapsedMs','isCorrect','streak','rank']){
+      expect(()=>answerRequest({playerId:id,choiceId:id,roundIndex:3,[field]:1})).toThrow('unsupported fields');
+    }
+    expect(parseParticipantState({employeeId:id,totalScore:938,roundFeedback:{roundIndex:0,outcome:'correct',points:938,streak:1},standing:null}))
+      .toEqual({answerEmployeeId:id,totalScore:938,roundFeedback:{roundIndex:0,outcome:'correct',points:938,streak:1},standing:null});
+    expect(parseParticipantState({employeeId:null,totalScore:938,roundFeedback:{roundIndex:1,outcome:'no_answer',points:0,streak:0},standing:{rank:27,totalScore:938}}))
+      .toEqual({answerEmployeeId:null,totalScore:938,roundFeedback:{roundIndex:1,outcome:'no_answer',points:0,streak:0},standing:{rank:27,totalScore:938}});
+    expect(()=>parseParticipantState({employeeId:id,totalScore:1000,roundFeedback:{roundIndex:0,outcome:'incorrect',points:1,streak:0},standing:null})).toThrow();
+    expect(()=>parseParticipantState({employeeId:id,totalScore:0,roundFeedback:{roundIndex:0,outcome:'correct',points:1000,streak:1},standing:null},'question_open',0)).toThrow();
+    expect(()=>parseParticipantState({employeeId:id,totalScore:1000,roundFeedback:{roundIndex:0,outcome:'correct',points:1000,streak:1},standing:{rank:1,totalScore:1000}},'employee_revealed',0)).toThrow();
+    expect(parseParticipantState({employeeId:id,totalScore:1000,roundFeedback:{roundIndex:0,outcome:'correct',points:1000,streak:1},standing:{rank:1,totalScore:1000}},'leaderboard_displayed',0).standing).toEqual({rank:1,totalScore:1000});
+    expect(parseParticipantState({employeeId:null,totalScore:0,roundFeedback:null,standing:null},'employee_revealed',0).roundFeedback).toBeNull();
   });
 
   it('allowlists limiter and cleanup responses and supports Retry-After', () => {
@@ -168,5 +189,11 @@ describe('sanitized API snapshot shape', () => {
     expect(()=>normalizeSnapshot({room_code:'ABCDE',preload_assets:[{key:'ZZZZZ:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=0&asset=550e8400-e29b-41d4-a716-446655440000'}]})).toThrow('Invalid data service response.');
     expect(()=>normalizeSnapshot({room_code:'ABCDE',preload_assets:[{key:'ABCDE:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=1&asset=550e8400-e29b-41d4-a716-446655440000'}]})).toThrow('Invalid data service response.');
     expect(()=>normalizeSnapshot({room_code:'ABCDE',preload_assets:[{key:'ABCDE:0:reveal',kind:'reveal-encrypted',roundIndex:0,url:'/api/rooms/ABCDE/reveal-preload?round=0&asset=550e8400-e29b-41d4-a716-446655440000&extra=x'}]})).toThrow('Invalid data service response.');
+  });
+  it('allowlists deterministic leaderboard entries only in visible leaderboard phases',()=>{
+    const base={room_code:'ABCDE',phase:'leaderboard_displayed',leaderboard:{isFinal:false,entries:[{rank:1,displayName:'Chris',totalScore:1000,correctAnswers:1,playerId:'drop'}]}};
+    expect(normalizeSnapshot(base).leaderboard).toEqual({isFinal:false,entries:[{rank:1,displayName:'Chris',totalScore:1000,correctAnswers:1}]});
+    expect(()=>normalizeSnapshot({...base,phase:'results_displayed'})).toThrow('Invalid data service response.');
+    expect(()=>normalizeSnapshot({...base,leaderboard:{isFinal:false,entries:[{rank:2,displayName:'Chris',totalScore:1000,correctAnswers:1}]}})).toThrow();
   });
 });

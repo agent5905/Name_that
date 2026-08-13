@@ -42,17 +42,26 @@ function snapshot(phase: string, mediaAvailable = false) {
     submittedAnswerCount: phase === 'question_open' ? 12 : 18,
     version: 7,
     choices,
-    revealedEmployee: ['employee_revealed', 'results_displayed'].includes(phase)
+    revealedEmployee: ['employee_revealed', 'results_displayed', 'leaderboard_displayed', 'complete'].includes(phase)
       ? { id: ids.priya, displayName: 'Priya Shah', team: 'Product Design', funFact: 'I once taught a parrot to say stand-up updates.', mediaAvailable }
       : null,
-    results: phase === 'results_displayed'
+    results: ['results_displayed', 'leaderboard_displayed', 'complete'].includes(phase)
       ? { totalAnswers: 18, correctAnswers: 11, choices: [{ employeeId: ids.maya, count: 2 }, { employeeId: ids.jordan, count: 3 }, { employeeId: ids.priya, count: 11 }, { employeeId: ids.mateo, count: 2 }] }
+      : null,
+    leaderboard: ['leaderboard_displayed', 'complete'].includes(phase)
+      ? { isFinal: phase === 'complete', entries: [
+        { rank: 1, displayName: 'Maya Chen', totalScore: 2864, correctAnswers: 3 },
+        { rank: 2, displayName: 'Chris', totalScore: 2750, correctAnswers: 3 },
+        { rank: 3, displayName: 'Chris', totalScore: 1938, correctAnswers: 2 },
+        { rank: 4, displayName: 'Alex Rivera', totalScore: 924, correctAnswers: 1 },
+        { rank: 5, displayName: 'Jordan Brooks', totalScore: 0, correctAnswers: 0 },
+      ] }
       : null,
     updatedAt: '2026-08-11T20:00:00.000Z',
   };
 }
 
-async function mockGame(page: Page, phase: string, options: { mediaAvailable?: boolean; participantAnswer?: string | null; eligibleParticipantCount?: number } = {}) {
+async function mockGame(page: Page, phase: string, options: { mediaAvailable?: boolean; participantAnswer?: string | null; eligibleParticipantCount?: number; isFinalRound?: boolean } = {}) {
   await page.route('**/api/rooms/**', async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith(`/media/${ids.priya}`)) {
@@ -60,11 +69,17 @@ async function mockGame(page: Page, phase: string, options: { mediaAvailable?: b
       return;
     }
     if (url.pathname.endsWith('/host')) {
-      await route.fulfill({ json: { host: { roomId: ids.room, code, phase, currentRound: phase === 'lobby' ? null : 2, roundCount: 3, isFinalRound: phase !== 'lobby', correctEmployee: phase === 'lobby' ? null : { id: ids.priya, displayName: 'Priya Shah', team: 'Product Design' }, version: 7 } } });
+      await route.fulfill({ json: { host: { roomId: ids.room, code, phase, currentRound: phase === 'lobby' ? null : 2, roundCount: 3, isFinalRound: options.isFinalRound ?? phase !== 'lobby', correctEmployee: phase === 'lobby' ? null : { id: ids.priya, displayName: 'Priya Shah', team: 'Product Design' }, version: 7 } } });
       return;
     }
     if (url.pathname.endsWith('/snapshot')) {
-      await route.fulfill({ json: { snapshot: { ...snapshot(phase, options.mediaAvailable), eligibleParticipantCount: options.eligibleParticipantCount ?? 18 }, participant: { playerId: ids.player, answerEmployeeId: options.participantAnswer ?? null } } });
+      await route.fulfill({ json: { snapshot: { ...snapshot(phase, options.mediaAvailable), eligibleParticipantCount: options.eligibleParticipantCount ?? 18 }, participant: {
+        playerId: ids.player,
+        answerEmployeeId: options.participantAnswer ?? null,
+        totalScore: 924,
+        roundFeedback: ['employee_revealed', 'results_displayed'].includes(phase) ? { roundIndex: 2, outcome: options.participantAnswer === ids.priya ? 'correct' : options.participantAnswer ? 'incorrect' : 'no_answer', points: options.participantAnswer === ids.priya ? 924 : 0, streak: options.participantAnswer === ids.priya ? 2 : 0 } : null,
+        standing: ['leaderboard_displayed', 'complete'].includes(phase) ? { rank: 27, totalScore: 924 } : null,
+      } } });
       return;
     }
     if (url.pathname.endsWith('/join')) {
@@ -160,7 +175,7 @@ test('host sees the private answer and finishes the final round', async ({ page 
   await page.goto(`/host/${code}`);
   await expect(page.getByText('Host answer')).toBeVisible();
   await expect(page.getByText('Priya Shah').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Finish game/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Show final leaderboard/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('host-final-round-1440.png'), fullPage: true, animations: 'disabled' });
 });
 
@@ -186,6 +201,7 @@ test('a delayed answer response cannot lock the following round', async ({ page 
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname.endsWith('/answers') && request.method() === 'POST') {
+      expect(request.postDataJSON()).toMatchObject({ playerId: ids.player, roundIndex: 0 });
       await answerBarrier;
       await route.fulfill({ json: { answer: { accepted: true, idempotent: false, employeeId: ids.maya } } });
       return;
@@ -228,6 +244,107 @@ test('participant reveal uses the protected portrait response', async ({ page },
   await page.screenshot({ path: testInfo.outputPath('participant-reveal-390.png'), fullPage: true, animations: 'disabled' });
 });
 
+test('participant reveal gives celebratory or neutral private scoring feedback without crowding voting', async ({ browser }, testInfo) => {
+  for (const scenario of [
+    { name: 'correct', answer: ids.priya, expected: /You got it!/, detail: /2 correct in a row/ },
+    { name: 'incorrect', answer: ids.maya, expected: /It was Priya Shah/, detail: /get the next one/ },
+    { name: 'no-answer', answer: null, expected: /No answer this round/, detail: /Ready for the next mystery/ },
+  ] as const) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await participantSession(page);
+    await mockGame(page, 'employee_revealed', { participantAnswer: scenario.answer });
+    await page.goto(`/play/${code}`);
+    await expect(page.getByText(scenario.expected)).toBeVisible();
+    await expect(page.getByText(scenario.detail)).toBeVisible();
+    await expect(page.getByText('Score 924')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`participant-${scenario.name}-390.png`), fullPage: true, animations: 'disabled' });
+    await page.close();
+  }
+});
+
+test('participant leaderboard shows personal rank outside the public Top 5', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await participantSession(page);
+  await mockGame(page, 'leaderboard_displayed', { participantAnswer: ids.priya });
+  await page.goto(`/play/${code}`);
+  await expect(page.getByRole('heading', { name: 'You’re #27' })).toBeVisible();
+  await expect(page.getByText('924 points')).toBeVisible();
+  await expect(page.getByText('Maya Chen')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('participant-standing-390.png'), fullPage: true, animations: 'disabled' });
+});
+
+test('shared display renders a duplicate-name Top 5 and final podium without employee photos', async ({ browser }, testInfo) => {
+  for (const [phase, filename, heading] of [
+    ['leaderboard_displayed', 'display-leaderboard-1280.png', 'Leaderboard'],
+    ['complete', 'display-final-podium-1280.png', 'Final podium'],
+  ] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await mockGame(page, phase);
+    await page.goto(`/display/${code}`);
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(page.getByText('Chris', { exact: true })).toHaveCount(2);
+    await expect(page.locator('.leaderboard img')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(filename), fullPage: true, animations: 'disabled' });
+    await page.close();
+  }
+});
+
+test('Results to Leaderboard to Next retains round-indexed preload bytes without duplicate requests', async ({ page }) => {
+  const questionA = '77777777-7777-4777-8777-777777777777';
+  const questionB = '88888888-8888-4888-8888-888888888888';
+  const paths = [
+    `/api/rooms/${code}/mystery-preload?round=0&asset=${questionA}`,
+    `/api/rooms/${code}/reveal-preload?round=0&asset=${questionA}`,
+    `/api/rooms/${code}/mystery-preload?round=1&asset=${questionB}`,
+    `/api/rooms/${code}/reveal-preload?round=1&asset=${questionB}`,
+  ];
+  const requestCounts = new Map(paths.map((path) => [path, 0]));
+  let phase = 'question_open';
+  let roundIndex = 0;
+  let version = 1;
+  await page.route('**/api/rooms/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (requestCounts.has(url.pathname + url.search)) {
+      requestCounts.set(url.pathname + url.search, requestCounts.get(url.pathname + url.search)! + 1);
+      await route.fulfill({ body: rasterFixture(32, 32, url.searchParams.get('round') === '0' ? 40 : 220), contentType: 'image/png' });
+      return;
+    }
+    if (url.pathname.endsWith('/snapshot')) {
+      const preloadAssets = paths.slice(roundIndex === 0 ? 0 : 2).map((path) => {
+        const assetRound = Number(new URL(path, 'http://local').searchParams.get('round'));
+        return { key: `${code}:${assetRound}:${path.includes('reveal') ? 'reveal' : 'mystery'}`, kind: path.includes('reveal') ? 'reveal-encrypted' : 'mystery', roundIndex: assetRound, url: path };
+      });
+      const state = {
+        ...snapshot(phase), phase, roundIndex, roundCount: 2, version, preloadAssets,
+        mysteryImageUrl: `/api/rooms/${code}/mystery`, silhouetteUrl: `/api/rooms/${code}/mystery`,
+        leaderboard: phase === 'leaderboard_displayed' ? snapshot('leaderboard_displayed').leaderboard : null,
+      };
+      await route.fulfill({ json: { snapshot: state } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'Not found.' } } });
+  });
+  await page.goto(`/display/${code}`);
+  const portrait = page.locator('.portrait-chamber.is-concealed img');
+  await expect(portrait).toBeVisible();
+  const roundOneSrc = await portrait.getAttribute('src');
+  expect(roundOneSrc).toMatch(/^blob:/);
+  phase = 'results_displayed'; version = 2;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.display-state-results_displayed')).toBeVisible();
+  phase = 'leaderboard_displayed'; version = 3;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.getByRole('heading', { name: 'Leaderboard' })).toBeVisible();
+  await expect.poll(() => paths.map((path) => requestCounts.get(path)), { timeout: 5_000 }).toEqual([1, 1, 1, 1]);
+  expect(paths.map((path) => requestCounts.get(path))).toEqual([1, 1, 1, 1]);
+  phase = 'question_open'; roundIndex = 1; version = 4;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.display-state-question_open')).toBeVisible();
+  await expect(portrait).toBeVisible();
+  await expect.poll(() => portrait.getAttribute('src')).not.toBe(roundOneSrc);
+  expect(paths.map((path) => requestCounts.get(path))).toEqual([1, 1, 1, 1]);
+});
+
 test('host question control exposes progress, private answer, and guarded next action', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(({ codeValue, idValues }) => {
@@ -239,6 +356,33 @@ test('host question control exposes progress, private answer, and guarded next a
   await expect(page.getByText('Host answer')).toBeVisible();
   await expect(page.getByText('12/18')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('host-question-1440.png'), fullPage: true, animations: 'disabled' });
+});
+
+test('host Results makes leaderboard optional mid-game and mandatory before the final finish', async ({ browser }) => {
+  for (const [isFinalRound, expectedPrimary] of [[false, /Show leaderboard/], [true, /Show final leaderboard/]] as const) {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.addInitScript(({ codeValue, idValues }) => {
+      localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, token: 'h'.repeat(43) }));
+    }, { codeValue: code, idValues: ids });
+    await mockGame(page, 'results_displayed', { isFinalRound });
+    await page.goto(`/host/${code}`);
+    await expect(page.getByRole('button', { name: expectedPrimary })).toBeVisible();
+    if (isFinalRound) await expect(page.getByRole('button', { name: /^Next round/ })).toHaveCount(0);
+    else await expect(page.getByRole('button', { name: /^Next round/ })).toBeVisible();
+    await page.close();
+  }
+});
+
+test('host complete state retains the final podium beside Play Again', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(({ codeValue, idValues }) => {
+    localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, token: 'h'.repeat(43) }));
+  }, { codeValue: code, idValues: ids });
+  await mockGame(page, 'complete');
+  await page.goto(`/host/${code}`);
+  await expect(page.getByRole('heading', { name: 'Final podium' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Play again/ })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('host-complete-podium-1440.png'), fullPage: true, animations: 'disabled' });
 });
 
 test('host refresh preserves its session across a transient verification failure', async ({ page }, testInfo) => {

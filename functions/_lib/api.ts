@@ -5,7 +5,7 @@ type SnapshotRow = {
   room_code: string; phase: string; round_index: number | null; round_count: number;
   connected_participant_count: number; eligible_participant_count?: number; submitted_answer_count: number; version: number;
   choices: Json; revealed_employee: Json; results: Json; updated_at: string;
-  mystery_image_url?:string|null;preload_assets?:Json;
+  mystery_image_url?:string|null;preload_assets?:Json;leaderboard?:Json;
 };
 export interface HostRoomResponse {
   readonly roomId: string;
@@ -30,7 +30,7 @@ interface Database {
     Functions: {
       create_room: { Args: { p_code: string; p_host_token_hash: string }; Returns: Json };
       join_room: { Args: { p_code: string; p_display_name: string; p_participant_token_hash: string; p_join_operation_id?: string }; Returns: Json };
-      submit_answer: { Args: { p_code: string; p_player_id: string; p_participant_token_hash: string; p_employee_id: string }; Returns: Json };
+      submit_answer: { Args: { p_code: string; p_player_id: string; p_participant_token_hash: string; p_employee_id: string; p_expected_round: number }; Returns: Json };
       host_action: { Args: { p_code: string; p_host_token_hash: string; p_action: string }; Returns: Json };
       host_room: { Args: { p_code: string; p_host_token_hash: string }; Returns: HostRoomResponse };
       participant_answer: { Args: { p_code: string; p_player_id: string; p_participant_token_hash: string }; Returns: Json };
@@ -166,6 +166,13 @@ export function uuid(value: unknown, field = 'ID'): string {
   return value;
 }
 
+export function expectedRound(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 99) {
+    throw new ApiError(400, 'INVALID_ROUND', 'Round index is invalid.');
+  }
+  return value;
+}
+
 export function bearerToken(request: Request): string {
   const header = request.headers.get('authorization');
   const match = header?.match(/^Bearer ([A-Za-z0-9_-]{43})$/);
@@ -266,8 +273,8 @@ export function newRoomCode(): string {
   return [...bytes].map((byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join('');
 }
 
-export function requireAction(value: unknown): 'start' | 'lock' | 'reveal' | 'show_results' | 'next_round' | 'end' {
-  const actions = ['start', 'lock', 'reveal', 'show_results', 'next_round', 'end'] as const;
+export function requireAction(value: unknown): 'start' | 'lock' | 'reveal' | 'show_results' | 'show_leaderboard' | 'next_round' | 'end' {
+  const actions = ['start', 'lock', 'reveal', 'show_results', 'show_leaderboard', 'next_round', 'end'] as const;
   if (typeof value !== 'string' || !actions.some((action) => action === value)) {
     throw new ApiError(400, 'INVALID_ACTION', 'Host action is invalid.');
   }
@@ -335,8 +342,20 @@ export function normalizeSnapshot(row: Record<string, unknown>): Record<string, 
     preloadAssets: parsePreloadAssets(row.preload_assets ?? [],normalizedCode),
     revealedEmployee: row.revealed_employee,
     results: row.results,
+    leaderboard: parseLeaderboard(row.leaderboard ?? null, row.phase),
     updatedAt: row.updated_at,
   };
+}
+
+function parseLeaderboard(value: unknown, phase: unknown): Record<string, unknown> | null {
+  if (value === null) return null;
+  const row=rpcObject(value);
+  if (phase!=='leaderboard_displayed'&&phase!=='complete') throw new Error('Invalid data service response.');
+  if(typeof row.isFinal!=='boolean'||!Array.isArray(row.entries))throw new Error('Invalid data service response.');
+  const maximum=row.isFinal?10:5;
+  if(row.entries.length>maximum)throw new Error('Invalid data service response.');
+  const entries=row.entries.map((raw,index)=>{const entry=rpcObject(raw);const rank=rpcInteger(entry.rank),score=rpcInteger(entry.totalScore),correctAnswers=rpcInteger(entry.correctAnswers),name=rpcString(entry.displayName);if(rank!==index+1||score<0||score>100000||correctAnswers<0||correctAnswers>100||name.trim()!==name||name.length<1||name.length>40)throw new Error('Invalid data service response.');return{rank,displayName:name,totalScore:score,correctAnswers};});
+  return{isFinal:row.isFinal,entries};
 }
 
 function rpcObject(value: unknown): Record<string, unknown> {
@@ -508,11 +527,37 @@ export interface SubmittedAnswerResponse {
   readonly accepted: boolean;
   readonly idempotent: boolean;
   readonly employeeId: string;
+  readonly roundIndex: number;
 }
 export function parseSubmittedAnswer(value: unknown): SubmittedAnswerResponse {
   const row = rpcObject(value);
   if (row.accepted !== true || typeof row.idempotent !== 'boolean') throw new Error('Invalid data service response.');
-  return { accepted: true, idempotent: row.idempotent, employeeId: rpcUuid(row.employeeId) };
+  const roundIndex=rpcInteger(row.roundIndex);
+  if(roundIndex<0||roundIndex>99)throw new Error('Invalid data service response.');
+  return { accepted: true, idempotent: row.idempotent, employeeId: rpcUuid(row.employeeId), roundIndex };
+}
+
+export interface ParticipantStateResponse {
+  readonly answerEmployeeId:string|null;
+  readonly totalScore:number;
+  readonly roundFeedback:{readonly roundIndex:number;readonly outcome:'correct'|'incorrect'|'no_answer';readonly points:number;readonly streak:number}|null;
+  readonly standing:{readonly rank:number;readonly totalScore:number}|null;
+}
+export function parseParticipantState(value:unknown,phase?:unknown,currentRound?:unknown):ParticipantStateResponse{
+  const row=rpcObject(value);const answerEmployeeId=row.employeeId===null?null:rpcUuid(row.employeeId);const totalScore=rpcInteger(row.totalScore);
+  if(totalScore<0||totalScore>100000)throw new Error('Invalid data service response.');
+  let roundFeedback:ParticipantStateResponse['roundFeedback']=null;
+  if(row.roundFeedback!==null){const feedback=rpcObject(row.roundFeedback);if(!['correct','incorrect','no_answer'].includes(String(feedback.outcome)))throw new Error('Invalid data service response.');const roundIndex=rpcInteger(feedback.roundIndex),points=rpcInteger(feedback.points),feedbackStreak=rpcInteger(feedback.streak);if(roundIndex<0||roundIndex>99||points<0||points>1000||feedbackStreak<0||feedbackStreak>100||(feedback.outcome!=='correct'&&points!==0))throw new Error('Invalid data service response.');roundFeedback={roundIndex,outcome:feedback.outcome as 'correct'|'incorrect'|'no_answer',points,streak:feedbackStreak};}
+  let standing:ParticipantStateResponse['standing']=null;
+  if(row.standing!==null){const value=rpcObject(row.standing);const rank=rpcInteger(value.rank),standingScore=rpcInteger(value.totalScore);if(rank<1||rank>225||standingScore<0||standingScore>100000)throw new Error('Invalid data service response.');standing={rank,totalScore:standingScore};}
+  if(phase!==undefined){
+    if(typeof phase!=='string')throw new Error('Invalid data service response.');
+    const postReveal=['employee_revealed','results_displayed','leaderboard_displayed','complete'].includes(phase);
+    const ranked=phase==='leaderboard_displayed'||phase==='complete';
+    if(roundFeedback!==null&&!postReveal||(standing!==null)!==ranked)throw new Error('Invalid data service response.');
+    if(roundFeedback!==null&&roundFeedback.roundIndex!==currentRound)throw new Error('Invalid data service response.');
+  }
+  return{answerEmployeeId,totalScore,roundFeedback,standing};
 }
 
 export function parseHostRoom(value: unknown): HostRoomResponse {
@@ -520,7 +565,7 @@ export function parseHostRoom(value: unknown): HostRoomResponse {
   const currentRound = row.currentRound === null ? null : rpcInteger(row.currentRound);
   const correct = row.correctEmployee === null ? null : rpcObject(row.correctEmployee);
   if (typeof row.isFinalRound !== 'boolean') throw new Error('Invalid data service response.');
-  const phases = ['lobby', 'question_open', 'answers_locked', 'employee_revealed', 'results_displayed', 'complete'];
+  const phases = ['lobby', 'question_open', 'answers_locked', 'employee_revealed', 'results_displayed', 'leaderboard_displayed', 'complete'];
   const phase = rpcString(row.phase);
   if (!phases.includes(phase)) throw new Error('Invalid data service response.');
   const code = rpcString(row.code);
