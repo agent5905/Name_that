@@ -38,15 +38,27 @@ Run the checked-in protocol harness in order. Stop on unexplained errors, failed
 
 | Stage | Purpose | Evidence file | Result |
 | ---: | --- | --- | --- |
-| 5 | Protocol correctness and report validation | _pending_ | _pending_ |
-| 10 | Early concurrency and duplicate-answer gate | _pending_ | _pending_ |
-| 25 | First meaningful ramp and reconnect check | _pending_ | _pending_ |
+| 5 | Protocol correctness and report validation | [`5-client.json`](capacity-results/5-client.json) | **PASS** |
+| 10 | Early concurrency and duplicate-answer gate | [`10-client.json`](capacity-results/10-client.json) | **PASS** |
+| 25 | First meaningful ramp and reconnect check | [`25-client.json`](capacity-results/25-client.json) | **PASS** |
 | 50 | DB/API contention trend | _pending_ | _pending_ |
 | 100 | Realtime/Pages trend and dashboard correlation | _pending_ | _pending_ |
 | 175 | Real audience target | _pending_ | _pending_ |
 | 225 | Engineering headroom; run once after all critical fixes | _pending_ | _pending_ |
 
 Every stage must record the immutable deployed commit/deployment ID, attempted/successful/failed joins, join and answer latency distributions, duplicate-answer integrity, exact authoritative totals, active/peak subscriptions, transition delivery, missed/duplicate/forbidden events, reconnect identity/idempotency, Pages/Supabase request counts, load-generator health, platform dashboard observations, and exact cleanup outcome.
+
+### Completed production stages — 2026-08-13
+
+All passing reports target commit `1b3af4d795b21fc08e3c1d56e90aae8a3d6ee0b3`, Cloudflare deployment `1f41ea72-6045-4e46-871d-9b482de63d84`, and the canonical production origin. Each run used a three-round tiny-image fixture and verified exact room cleanup; its enclosing batch then removed the isolated game, media objects, and admin profile.
+
+| Clients | Duration | Join p95 | Ready p95 | Answer p95 | Worst transition | Reconnect | Pages calls | Realtime deliveries | Generator RSS / loop p95 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5 | 26.4 s | 202.7 ms | 614.2 ms | 201.1 ms | 216.5 ms | 1/1 | 43 | 64 | 82.3 MiB / 32.1 ms |
+| 10 | 26.1 s | 214.4 ms | 921.3 ms | 195.8 ms | 218.5 ms | 1/1 | 73 | 129 | 85.9 MiB / 32.1 ms |
+| 25 | 59.8 s | 288.5 ms | 646.9 ms | 196.5 ms | 359.7 ms | 3/3 | 185 | 323 | 89.5 MiB / 32.1 ms |
+
+Every passing stage recorded all intended joins and answers, exact Results totals, one channel per simulated browser, zero missed transitions, zero same-phase events, zero malformed events/channel errors, and zero unexpected error categories. The first 5-client attempt is retained as [`5-client-failed-reconnect-harness.json`](capacity-results/5-client-failed-reconnect-harness.json): it exposed that the simulator waited for a manually removed channel to resurrect, while production replaces a terminal channel lease. The harness was corrected to recreate one channel on the same client and the controlled 5-client rerun passed; no deployed runtime change was made for that harness-only defect.
 
 ## Hard pass/fail gates
 
