@@ -486,11 +486,27 @@ class ParticipantClient {
   async reconnect() {
     this.metrics.reconnect.attempted += 1;
     const before = this.subscribedCount;
+    if (this.channel) {
+      await this.client.removeChannel(this.channel);
+      this.channel = null;
+    }
+    if (this.isSubscribed) {
+      this.isSubscribed = false;
+      this.metrics.realtime.subscribed = Math.max(0, this.metrics.realtime.subscribed - 1);
+    }
     this.client.realtime.disconnect();
     await sleep(this.context.config.reconnectOutageMs);
     this.client.realtime.connect();
-    const deadline = Date.now() + this.context.config.transitionTimeoutMs;
-    while (Date.now() < deadline && this.subscribedCount <= before) await sleep(100);
+    try {
+      // The production hook replaces a terminal room-channel lease. Recreate the
+      // channel explicitly instead of relying on a manually closed socket to
+      // resurrect a removed subscription implicitly.
+      await this.connectRealtime();
+    } catch {
+      this.metrics.reconnect.failed += 1;
+      this.metrics.error('RECONNECT_TIMEOUT');
+      return false;
+    }
     if (this.subscribedCount <= before) {
       this.metrics.reconnect.failed += 1;
       this.metrics.error('RECONNECT_TIMEOUT');

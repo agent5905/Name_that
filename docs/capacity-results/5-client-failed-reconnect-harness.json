@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 1,
+  "runId": "acdd3ba2",
+  "startedAt": "2026-08-13T16:20:51.008Z",
+  "finishedAt": "2026-08-13T16:22:03.613Z",
+  "environment": {
+    "origin": "https://name-that-team-member.pages.dev",
+    "hostname": "name-that-team-member.pages.dev",
+    "gameId": "bb1181b0-032d-4855-9860-ad40732c8e80",
+    "operatorRecordedGitCommit": "1b3af4d795b21fc08e3c1d56e90aae8a3d6ee0b3",
+    "operatorRecordedDeploymentId": "1f41ea72-6045-4e46-871d-9b482de63d84",
+    "deploymentIdentityVerification": "Operator supplied; correlate both values with the Cloudflare deployment dashboard before accepting the report."
+  },
+  "configuration": {
+    "execute": true,
+    "help": false,
+    "participants": 5,
+    "rounds": 3,
+    "joinWindowMs": 2000,
+    "participantPollMs": 60000,
+    "reconnectPercent": 10,
+    "latePercent": 5,
+    "lateJoinWindowMs": 5000,
+    "reconnectOutageMs": 3000,
+    "duplicatePercent": 10,
+    "transitionTimeoutMs": 15000,
+    "answerWindowMs": 5000,
+    "output": "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\5-client.json"
+  },
+  "estimate": {
+    "participants": 5,
+    "rounds": 3,
+    "estimatedDurationSeconds": 28,
+    "pagesFunctionRequests": {
+      "sessionCreate": 1,
+      "realtimeCredential": 5,
+      "joins": 5,
+      "initialAndSubscribeSnapshots": "between 5 and 10; concurrent recovery fetches are coalesced",
+      "periodicSnapshots": 3,
+      "answers": 15,
+      "duplicateAnswerProbes": 6,
+      "duplicateJoinRetries": 1,
+      "roomFullBoundaryProbe": 0,
+      "samePhaseInvalidationSnapshots": 0,
+      "externalHostAndDisplaySafetyPollsNotGenerated": "approximately 28 at the target 2-second role interval"
+    },
+    "supabaseRequests": {
+      "hostPhaseRpcCalls": "12 before an optional end action when all saved-game rounds are exercised",
+      "exactRoomCleanup": 5
+    },
+    "realtime": {
+      "websocketConnections": 5,
+      "privateChannels": 5,
+      "phaseBroadcastDeliveriesBeforeOptionalEnd": 59,
+      "optionalEndBroadcastDeliveries": 5,
+      "samePhaseJoinAndAnswerDeliveries": 0,
+      "baselineBeforeSuppression": "approximately 90 join/answer deliveries if the previous every-snapshot fan-out were retained"
+    },
+    "reconnectClients": 1,
+    "answerLockRaceClients": 1,
+    "lateJoinClients": 1,
+    "imageRequests": 0,
+    "note": "This is a protocol-capacity estimate. Late clients miss the initial start transition, and the optional end broadcast occurs only when every saved-game round is exercised. It deliberately does not download Mystery/Reveal assets or static application bundles."
+  },
+  "results": {
+    "attemptedParticipants": 5,
+    "joins": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "idempotentRetries": 1,
+      "retryFailures": 0
+    },
+    "activeRealtimeConnectionsAtPeak": 5,
+    "realtime": {
+      "subscribed": 1,
+      "peakSubscribed": 5,
+      "inboundEvents": 16,
+      "samePhaseEvents": 0,
+      "invalidEvents": 0,
+      "channelErrors": 0,
+      "maxChannelsPerClient": 1
+    },
+    "answers": {
+      "logicalAttempted": 5,
+      "httpAttempted": 7,
+      "successful": 4,
+      "closedAtLock": 1,
+      "failed": 0,
+      "idempotentDuplicates": 1,
+      "immutableDuplicates": 1,
+      "duplicateProbeFailures": 0,
+      "acceptedByRound": {
+        "0": 4
+      }
+    },
+    "joinLatency": {
+      "count": 5,
+      "averageMs": 175.4,
+      "p50Ms": 157.8,
+      "p95Ms": 268.5,
+      "maxMs": 268.5
+    },
+    "participantReadyLatency": {
+      "count": 5,
+      "averageMs": 598.7,
+      "p50Ms": 533.4,
+      "p95Ms": 948.7,
+      "maxMs": 948.7
+    },
+    "answerLatency": {
+      "count": 4,
+      "averageMs": 151.6,
+      "p50Ms": 145.5,
+      "p95Ms": 179.5,
+      "maxMs": 179.5
+    },
+    "transitions": [
+      {
+        "action": "start",
+        "phase": "question_open",
+        "roundIndex": 0,
+        "delivered": 4,
+        "missed": 0,
+        "count": 4,
+        "averageMs": 182.3,
+        "p50Ms": 182,
+        "p95Ms": 183.6,
+        "maxMs": 183.6,
+        "sourceCounts": {
+          "realtime-push": 4
+        }
+      },
+      {
+        "action": "lock",
+        "phase": "answers_locked",
+        "roundIndex": 0,
+        "delivered": 4,
+        "missed": 1,
+        "count": 4,
+        "averageMs": 329.1,
+        "p50Ms": 328.8,
+        "p95Ms": 329.9,
+        "maxMs": 329.9,
+        "sourceCounts": {
+          "realtime-push": 4
+        }
+      },
+      {
+        "action": "reveal",
+        "phase": "employee_revealed",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 3268.5,
+        "p50Ms": 626,
+        "p95Ms": 13679.8,
+        "maxMs": 13679.8,
+        "sourceCounts": {
+          "periodic": 1,
+          "realtime-push": 4
+        }
+      },
+      {
+        "action": "show_results",
+        "phase": "results_displayed",
+        "roundIndex": 0,
+        "delivered": 4,
+        "missed": 1,
+        "count": 4,
+        "averageMs": 278.4,
+        "p50Ms": 278.5,
+        "p95Ms": 278.9,
+        "maxMs": 278.9,
+        "sourceCounts": {
+          "realtime-push": 4
+        },
+        "answerTotals": [
+          null,
+          4
+        ]
+      }
+    ],
+    "reconnect": {
+      "attempted": 1,
+      "successful": 0,
+      "failed": 1,
+      "identityRecovered": 0,
+      "idempotentResubmits": 0
+    },
+    "capacityBoundary": {
+      "attempted": 0,
+      "rejectedRoomFull": 0,
+      "failed": 0
+    },
+    "answerLockRace": [
+      {
+        "roundIndex": 0,
+        "clients": 1,
+        "accepted": 0,
+        "answersClosed": 1,
+        "unexpected": 0,
+        "lockTransitionLatencyMs": 15345.9
+      }
+    ],
+    "snapshots": {
+      "successful": 13,
+      "failed": 0
+    },
+    "httpRequests": {
+      "total": 42,
+      "pagesFunctions": 33,
+      "supabaseClientHttp": 0,
+      "supabaseHostRest": 4,
+      "cleanup": 5
+    },
+    "approximateRealtimeEventVolume": 16,
+    "errorsByCategory": {
+      "RECONNECT_TIMEOUT": 1,
+      "RESULT_TOTAL_MISMATCH": 1
+    },
+    "durationMs": 72605,
+    "loadGenerator": {
+      "peakRssBytes": 86224896,
+      "peakHeapUsedBytes": 17203808,
+      "eventLoopDelay": {
+        "meanMs": 31.3,
+        "p95Ms": 32.1,
+        "maxMs": 34.8
+      },
+      "cpu": {
+        "userMs": 63,
+        "systemMs": 16,
+        "singleCoreUtilizationPercent": 0.1
+      },
+      "thresholds": {
+        "eventLoopP95Ms": 100,
+        "eventLoopMaxMs": 1000,
+        "peakRssBytes": 1610612736
+      },
+      "healthy": true
+    },
+    "cleanup": {
+      "passed": true,
+      "roomDeleted": true
+    }
+  },
+  "exclusions": [
+    "No static frontend bundles or Mystery/Reveal image bytes are downloaded.",
+    "Each simulated browser fetches the public Realtime credential once; no Supabase Auth users are created.",
+    "A real host browser and shared display are outside this protocol harness and must be run separately for the final rehearsal.",
+    "Duplicate join operations and concurrent duplicate answers are covered here; duplicate-tab UI/socket behavior is covered by the real-browser gauntlet.",
+    "Platform dashboard metrics are not inferred; correlate this report with Supabase and Cloudflare dashboards."
+  ],
+  "pass": false,
+  "failure": "Clients did not observe the exact authoritative answer total of 4."
+}
