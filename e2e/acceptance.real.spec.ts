@@ -244,9 +244,12 @@ async function completeFromLobby(
     await clickHostAction(page, /Show results/, round === roundCount - 1 ? /Show final leaderboard/ : /Next round/);
     if (round === roundCount - 1) {
       await clickHostAction(page, /Show final leaderboard/, /Finish game/);
-      for (const client of [display, participant].filter((candidate): candidate is Page => Boolean(candidate))) {
-        await expect(client.getByText(/points/).first()).toBeVisible({ timeout: ACTION_TIMEOUT });
+      if (display) {
+        const finalBoard=display.getByRole('region',{name:'Final leaderboard'});
+        await expect(finalBoard).toBeVisible({timeout:ACTION_TIMEOUT});
+        await expect(finalBoard.locator('b').first()).toHaveText(/\d/,{timeout:ACTION_TIMEOUT});
       }
+      if (participant) await expect(participant.getByText(/points/).first()).toBeVisible({timeout:ACTION_TIMEOUT});
       await page.getByRole('button', { name: /Finish game/ }).click();
       await expect(page.getByRole('button', { name: /Play again/ })).toBeVisible({ timeout: ACTION_TIMEOUT });
     } else {
