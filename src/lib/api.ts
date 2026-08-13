@@ -6,6 +6,7 @@ import type {
   ParticipantSnapshot,
 } from '../domain/game';
 import type { AdminSession, CreatedRoom, GameDefinition, GameSummary, SessionCreationOperation } from '../domain/admin';
+import type { ParticipantJoinOperation } from '../domain/admin';
 import type { RevealKey } from './assetPreloader';
 
 export class ApiError extends Error {
@@ -135,8 +136,8 @@ export async function createRoom(): Promise<{ room: { roomId: string; code: stri
   return requestJson('/api/rooms', { method: 'POST', body: {} });
 }
 
-export async function joinRoom(code: string, name: string): Promise<{ participant: Participant; participantToken: string }> {
-  return requestJson(`/api/rooms/${code}/join`, { method: 'POST', body: { name } });
+export async function joinRoom(code: string, name: string, operation: ParticipantJoinOperation): Promise<{ participant: Participant; participantToken: string }> {
+  return requestJson(`/api/rooms/${code}/join`, { method: 'POST', body: { name, ...operation } });
 }
 
 export async function getSnapshot(

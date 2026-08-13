@@ -4,7 +4,7 @@ import {
   parseCleanupRealtimeAuth, parseCleanupRooms, parseCreatedRoom, parseHostRoom, parseJoinedParticipant,
   parseMediaByteLimit, parseRoomCreationLimit, parseSubmittedAnswer, readJson, requireAction, roomCode,
   roomCreationSourceHash, throwRpcError, tokenHash, uuid,
-  preloadCacheKey, preloadQuery,
+  preloadCacheKey, preloadQuery, realtimeAnonToken,
 } from './api';
 import { definition } from '../api/games/index';
 
@@ -53,6 +53,15 @@ describe('API boundary validation', () => {
 });
 
 describe('credential primitives and service errors', () => {
+  it('accepts only a non-expiring-soon HS256 anon JWT for private Realtime', () => {
+    const part = (value: unknown) => btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const token = `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ role: 'anon', exp: 2_000_000_000 })}.${'a'.repeat(43)}`;
+    expect(realtimeAnonToken({ SUPABASE_REALTIME_ANON_KEY: token }, 1_900_000_000)).toBe(token);
+    expect(() => realtimeAnonToken({ SUPABASE_REALTIME_ANON_KEY: `${part({ alg: 'HS256' })}.${part({ role: 'authenticated', exp: 2_000_000_000 })}.${'a'.repeat(43)}` }, 1_900_000_000))
+      .toThrow('Realtime is temporarily unavailable.');
+    expect(() => realtimeAnonToken({ SUPABASE_REALTIME_ANON_KEY: token }, 1_999_999_800))
+      .toThrow('Realtime is temporarily unavailable.');
+  });
   it('creates separate opaque 256-bit tokens and hashes them deterministically', async () => {
     const host = newToken();
     const participant = newToken();
@@ -97,7 +106,7 @@ describe('credential primitives and service errors', () => {
     try {
       throwRpcError({ message: 'ROOM_FULL internal detail' });
     } catch (error) {
-      expect(error).toMatchObject({ status: 409, code: 'ROOM_FULL', message: 'Room has reached its 100-player limit.' });
+      expect(error).toMatchObject({ status: 409, code: 'ROOM_FULL', message: 'Room has reached its 225-player limit.' });
     }
   });
 

@@ -29,7 +29,7 @@ interface Database {
     Views: Record<never, never>;
     Functions: {
       create_room: { Args: { p_code: string; p_host_token_hash: string }; Returns: Json };
-      join_room: { Args: { p_code: string; p_display_name: string; p_participant_token_hash: string }; Returns: Json };
+      join_room: { Args: { p_code: string; p_display_name: string; p_participant_token_hash: string; p_join_operation_id?: string }; Returns: Json };
       submit_answer: { Args: { p_code: string; p_player_id: string; p_participant_token_hash: string; p_employee_id: string }; Returns: Json };
       host_action: { Args: { p_code: string; p_host_token_hash: string; p_action: string }; Returns: Json };
       host_room: { Args: { p_code: string; p_host_token_hash: string }; Returns: HostRoomResponse };
@@ -78,6 +78,7 @@ export interface Env {
   readonly SUPABASE_URL?: string;
   readonly VITE_SUPABASE_URL?: string;
   readonly SUPABASE_SECRET_KEY?: string;
+  readonly SUPABASE_REALTIME_ANON_KEY?: string;
 }
 
 const NO_STORE_HEADERS = {
@@ -177,6 +178,35 @@ export function opaqueToken(value: unknown): string {
   return value;
 }
 
+function decodeJwtPart(value: string): Record<string, unknown> {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('invalid jwt encoding');
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const binary = atob(value.replace(/-/g, '+').replace(/_/g, '/') + padding);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const decoded: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded)) throw new Error('invalid jwt object');
+  return decoded as Record<string, unknown>;
+}
+
+export function realtimeAnonToken(env: Env, nowSeconds = Math.floor(Date.now() / 1000)): string {
+  const token = env.SUPABASE_REALTIME_ANON_KEY;
+  const unavailable = () => new ApiError(503, 'REALTIME_UNAVAILABLE', 'Realtime is temporarily unavailable.');
+  if (typeof token !== 'string' || token.length < 100 || token.length > 2_048) throw unavailable();
+  const parts = token.split('.');
+  if (parts.length !== 3 || !/^[A-Za-z0-9_-]{32,}$/.test(parts[2] ?? '')) throw unavailable();
+  try {
+    const header = decodeJwtPart(parts[0] ?? '');
+    const claims = decodeJwtPart(parts[1] ?? '');
+    if (header.alg !== 'HS256' || claims.role !== 'anon'
+      || typeof claims.exp !== 'number' || !Number.isSafeInteger(claims.exp)
+      || claims.exp <= nowSeconds + 300) throw unavailable();
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw unavailable();
+  }
+  return token;
+}
+
 export function parseMediaLocation(value:unknown):{storagePath:string;mimeType:string}{const row=rpcObject(value);const path=rpcString(row.storagePath);const mime=rpcString(row.mimeType);if(!/^(portraits|game-media)\//.test(path)||!['image/jpeg','image/png','image/webp'].includes(mime))throw new Error('Invalid data service response.');return{storagePath:path,mimeType:mime};}
 export function roomMediaRole(value:unknown):'mystery'|'reveal'{if(value==='mystery'||value==='reveal')return value;throw new ApiError(400,'INVALID_MEDIA_ROLE','Image role is invalid.');}
 export function preloadQuery(request:Request):{round:number;asset:string}{const raw=new URL(request.url).search;if(!/^\?round=(0|[1-9]\d?)&asset=[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(raw))throw new ApiError(400,'INVALID_PRELOAD_ROUND','Preload URL is invalid.');const query=new URLSearchParams(raw);return{round:Number(query.get('round')),asset:uuid(query.get('asset'),'Session asset')};}
@@ -271,7 +301,7 @@ export function throwRpcError(error: ServiceError): never {
     ['INVALID_CHOICE', 400, 'INVALID_CHOICE', 'Choice is not valid for this round.'],
     ['IDEMPOTENCY_CONFLICT', 409, 'IDEMPOTENCY_CONFLICT', 'This request key was already used.'],
     ['PLAY_AGAIN_UNAVAILABLE', 409, 'PLAY_AGAIN_UNAVAILABLE', 'This room cannot be played again.'],
-    ['ROOM_FULL', 409, 'ROOM_FULL', 'Room has reached its 100-player limit.'],
+    ['ROOM_FULL', 409, 'ROOM_FULL', 'Room has reached its 225-player limit.'],
     ['CODE_COLLISION', 409, 'CODE_COLLISION', 'Room code collision.'],
     ['PARTICIPANT_UNAUTHORIZED', 403, 'PARTICIPANT_UNAUTHORIZED', 'Participant credential does not match this room and player.'],
     ['HOST_UNAUTHORIZED', 403, 'HOST_UNAUTHORIZED', 'Host credential is invalid.'],

@@ -21,9 +21,44 @@ const sessionCryptoSearchPath = readFileSync(new URL('../../supabase/migrations/
 const priorityPhaseBroadcast = readFileSync(new URL('../../supabase/migrations/202608110012_priority_phase_broadcast.sql',import.meta.url),'utf8');
 const authoritativePhasePush = readFileSync(new URL('../../supabase/migrations/202608110013_authoritative_phase_push.sql',import.meta.url),'utf8');
 const directHostPhaseAction = readFileSync(new URL('../../supabase/migrations/202608110014_direct_host_phase_action.sql',import.meta.url),'utf8');
+const capacity225 = readFileSync(new URL('../../supabase/migrations/202608110015_225_participant_capacity.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
+  it('raises the effective serialized admission boundary to exactly 225 with retry-stable joins', () => {
+    const join = capacity225.slice(capacity225.indexOf('function public.join_room('), capacity225.indexOf('function public.submit_answer('));
+    expect(join).toContain('where code = p_code for update');
+    expect(join).toContain('if v_count >= 225');
+    expect(join).toContain('join_operation_id = p_join_operation_id');
+    expect(join).toContain("message = 'IDEMPOTENCY_CONFLICT'");
+    expect(capacity225).toContain('players_room_join_operation_idx');
+    expect(applyScript).toContain("['202608110015', '../supabase/migrations/202608110015_225_participant_capacity.sql']");
+  });
+
+  it('admits concurrent answers exactly once behind a shared/exclusive phase gate', () => {
+    const answer = capacity225.slice(capacity225.indexOf('function public.submit_answer('), capacity225.indexOf('function public.host_action('));
+    const host = capacity225.slice(capacity225.indexOf('function public.host_action('), capacity225.indexOf('function public.broadcast_room_snapshot_invalidation('));
+    expect(answer).toContain("pg_advisory_xact_lock_shared(hashtextextended('room-answer-gate:' || p_code, 0))");
+    expect(answer.match(/on conflict \(question_id, player_id\) do nothing/g)).toHaveLength(1);
+    expect(answer.match(/on conflict \(round_id, player_id\) do nothing/g)).toHaveLength(1);
+    expect(answer).toContain("'idempotent', true");
+    expect(answer).toContain("message = 'ANSWER_IMMUTABLE'");
+    expect(host).toContain("pg_advisory_xact_lock(hashtextextended('room-answer-gate:' || p_code, 0))");
+    expect(host.indexOf('pg_advisory_xact_lock(')).toBeLessThan(host.indexOf('where code = p_code for update'));
+  });
+
+  it('updates progress without snapshot recomputation or same-phase Realtime fan-out', () => {
+    expect(capacity225).toContain('submitted_answer_count = s.submitted_answer_count + 1');
+    expect(capacity225).toContain('connected_participant_count = s.connected_participant_count + 1');
+    expect(capacity225).toContain("if tg_op = 'UPDATE'");
+    expect(capacity225).toContain('new.phase is not distinct from old.phase');
+    expect(capacity225).toContain('new.round_index is not distinct from old.round_index');
+    const broadcaster = capacity225.slice(capacity225.indexOf('function public.broadcast_room_snapshot_invalidation('));
+    expect(broadcaster.indexOf('return null;')).toBeLessThan(broadcaster.indexOf('perform realtime.send('));
+    const answer = capacity225.slice(capacity225.indexOf('function public.submit_answer('), capacity225.indexOf('function public.host_action('));
+    expect(answer).not.toContain('refresh_room_snapshot');
+    expect(answer).not.toContain('update public.rooms');
+  });
   it('exposes only the credential-checked host state machine for direct low-latency phase cues', () => {
     expect(directHostPhaseAction).toContain('security definer');
     expect(directHostPhaseAction).toContain("set search_path = ''");
@@ -57,7 +92,7 @@ describe('authoritative migration regression guards', () => {
     expect(migration).not.toContain('order by md5');
   });
 
-  it('serializes joins before enforcing the exact 100-player boundary', () => {
+  it('preserves the original locked boundary before the additive 225-player capacity patch', () => {
     const lock = migration.indexOf('where code = p_code for update', migration.indexOf('function public.join_room'));
     const count = migration.indexOf('select count(*) into v_player_count', lock);
     const cap = migration.indexOf('if v_player_count >= 100', count);

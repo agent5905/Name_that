@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newSessionOperation } from './sessionOperation';
+import { newParticipantJoinOperation, newSessionOperation } from './sessionOperation';
 
 describe('newSessionOperation', () => {
   it('creates a 256-bit base64url host token and an independent idempotency key', () => {
@@ -8,5 +8,13 @@ describe('newSessionOperation', () => {
     expect(first.hostToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(first.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     expect(second).not.toEqual(first);
+  });
+});
+
+describe('newParticipantJoinOperation', () => {
+  it('creates a retry-stable operation payload with a caller-owned token', () => {
+    const operation = newParticipantJoinOperation();
+    expect(operation.participantToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(operation.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

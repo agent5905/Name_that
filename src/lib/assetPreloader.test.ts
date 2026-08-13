@@ -17,6 +17,68 @@ describe('asset preloader', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it('warms only the first mystery during lobby and staggers reveal and next-round assets after opening', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn(() => Promise.resolve(new Response(new Uint8Array([1, 2, 3]))));
+      vi.stubGlobal('fetch', fetcher);
+      const assets = [
+        { key: 'F7K2M:0:mystery', kind: 'mystery' as const, roundIndex: 0, url: '/api/rooms/F7K2M/mystery-preload?round=0' },
+        { key: 'F7K2M:0:reveal', kind: 'reveal-encrypted' as const, roundIndex: 0, url: '/api/rooms/F7K2M/reveal-preload?round=0' },
+        { key: 'F7K2M:1:mystery', kind: 'mystery' as const, roundIndex: 1, url: '/api/rooms/F7K2M/mystery-preload?round=1' },
+        { key: 'F7K2M:1:reveal', kind: 'reveal-encrypted' as const, roundIndex: 1, url: '/api/rooms/F7K2M/reveal-preload?round=1' },
+      ];
+      preloadAssets(assets, { phase: 'lobby', currentRound: null, seed: 'player-1' });
+      expect(fetcher).not.toHaveBeenCalled();
+      await vi.runAllTimersAsync();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+
+      preloadAssets(assets, { phase: 'question_open', currentRound: 0, seed: 'player-1' });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(fetcher).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a keyed schedule stable across repeated count-only snapshot refreshes', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn(() => Promise.resolve(new Response(new Uint8Array([1, 2, 3]))));
+      vi.stubGlobal('fetch', fetcher);
+      const assets = [
+        { key: 'F7K2M:1:reveal', kind: 'reveal-encrypted' as const, roundIndex: 1, url: '/api/rooms/F7K2M/reveal-preload?round=1' },
+      ];
+      preloadAssets(assets, { phase: 'question_open', currentRound: 0, seed: 'player-1' });
+      await vi.advanceTimersByTimeAsync(2_000);
+      preloadAssets([...assets], { phase: 'question_open', currentRound: 0, seed: 'player-1' });
+      await vi.runAllTimersAsync();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('moves a scheduled reveal earlier when a phase change makes it urgent', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn(() => Promise.resolve(new Response(new Uint8Array([1, 2, 3]))));
+      vi.stubGlobal('fetch', fetcher);
+      const asset = {
+        key: 'F7K2M:1:reveal', kind: 'reveal-encrypted' as const, roundIndex: 1,
+        url: '/api/rooms/F7K2M/reveal-preload?round=1',
+      };
+      preloadAssets([asset], { phase: 'question_open', currentRound: 0, seed: 'player-1' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      preloadAssets([asset], { phase: 'question_open', currentRound: 1, seed: 'player-1' });
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects cross-origin and malformed preload hints', async () => {
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
     await expect(preloadAsset({ key: 'bad', kind: 'mystery', roundIndex: 0, url: 'https://attacker.example/tracker.png' })).resolves.toBeNull();

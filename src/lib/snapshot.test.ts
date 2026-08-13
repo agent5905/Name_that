@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePushedSnapshot, preserveRevealEnrichment, shouldReplaceSnapshot } from './snapshot';
+import { mergeCountOnlySnapshot, parsePushedSnapshot, preserveRevealEnrichment, shouldReplaceSnapshot } from './snapshot';
 
 const id='11111111-1111-4111-8111-111111111111';
 const base={roomCode:'F7K2M',phase:'employee_revealed',roundIndex:0,roundCount:2,connectedParticipantCount:2,eligibleParticipantCount:2,submittedAnswerCount:2,version:8,choices:[{id,displayName:'Alex',position:0},{id:'22222222-2222-4222-8222-222222222222',displayName:'Sam',position:1}],revealedEmployee:{id,displayName:'Alex',team:null,funFact:'Fact',mediaAvailable:true,mediaKey:'F7K2M:0:reveal',revealKey:{key:'A'.repeat(43),iv:'B'.repeat(16),mimeType:'image/png',aad:`name-that:${id}:22222222-2222-4222-8222-222222222222`}},results:null,updatedAt:'2026-08-12T00:00:00Z',prompt:'Who?',mysteryImageUrl:null,silhouetteUrl:null,preloadAssets:[]};
@@ -37,4 +37,15 @@ describe('snapshot source precedence',()=>{
     expect(shouldReplaceSnapshot('push',8,8,8)).toBe(false);
     expect(shouldReplaceSnapshot('http',9,8,8)).toBe(true);
   });
+});
+
+it('merges equal-version aggregate progress without regressing the authoritative projection',()=>{
+  const current=parsePushedSnapshot(base,'F7K2M',8,'employee_revealed')!;
+  const next={...current,connectedParticipantCount:175,eligibleParticipantCount:170,submittedAnswerCount:169,prompt:'stale prompt',revealedEmployee:null,updatedAt:'2026-08-12T00:00:02Z'};
+  const merged=mergeCountOnlySnapshot(current,next)!;
+  expect(merged.connectedParticipantCount).toBe(175);
+  expect(merged.submittedAnswerCount).toBe(169);
+  expect(merged.prompt).toBe(current.prompt);
+  expect(merged.revealedEmployee).toEqual(current.revealedEmployee);
+  expect(mergeCountOnlySnapshot(current,{...next,version:9})).toBeNull();
 });

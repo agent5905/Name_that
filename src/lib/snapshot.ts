@@ -18,6 +18,18 @@ export function shouldReplaceSnapshot(source: 'http' | 'push', nextVersion: numb
   return true;
 }
 
+/** Accepts same-authority aggregate progress without allowing a poll to regress game state. */
+export function mergeCountOnlySnapshot(current: GameSnapshot | null, next: GameSnapshot): GameSnapshot | null {
+  if (!current || next.version !== current.version || next.phase !== current.phase || next.roundIndex !== current.roundIndex) return null;
+  return {
+    ...current,
+    connectedParticipantCount: next.connectedParticipantCount,
+    ...(next.eligibleParticipantCount === undefined ? {} : { eligibleParticipantCount: next.eligibleParticipantCount }),
+    submittedAnswerCount: next.submittedAnswerCount,
+    updatedAt: next.updatedAt,
+  };
+}
+
 export function preserveRevealEnrichment(current: GameSnapshot | null, next: GameSnapshot): GameSnapshot {
   const prior = current?.revealedEmployee;
   const incoming = next.revealedEmployee;

@@ -17,17 +17,6 @@ const query = async (sql) => {
   if (!response.ok) throw new Error(`Supabase management query failed (${response.status}).`);
   return response.json();
 };
-const configureAnonymousAuth = async () => {
-  const response = await fetch(`https://api.supabase.com/v1/projects/${encodeURIComponent(ref)}/config/auth`, {
-    method: 'PATCH',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      external_anonymous_users_enabled: true,
-      rate_limit_anonymous_users: 120,
-    }),
-  });
-  if (!response.ok) throw new Error(`Supabase Auth configuration failed (${response.status}).`);
-};
 
 await query(`create table if not exists public.app_schema_migrations (
   version text primary key, applied_at timestamptz not null default now()
@@ -47,6 +36,7 @@ const ordered = [
   ['202608110012', '../supabase/migrations/202608110012_priority_phase_broadcast.sql'],
   ['202608110013', '../supabase/migrations/202608110013_authoritative_phase_push.sql'],
   ['202608110014', '../supabase/migrations/202608110014_direct_host_phase_action.sql'],
+  ['202608110015', '../supabase/migrations/202608110015_225_participant_capacity.sql'],
 ];
 const initial = await query("select exists(select 1 from pg_type where typname='game_phase') as applied");
 if (initial[0]?.applied) await query("insert into public.app_schema_migrations(version) values('202608110001') on conflict do nothing");
@@ -57,7 +47,5 @@ for (const [version, file] of ordered) {
   await query(`begin; ${sql}; insert into public.app_schema_migrations(version) values('${version}'); commit;`);
   console.log(`Applied migration ${version}.`);
 }
-await configureAnonymousAuth();
-console.log('Enabled Anonymous Auth with a bounded 120 sign-ins/hour/IP limit.');
 await query(await readFile(new URL('../supabase/seed.sql', import.meta.url), 'utf8'));
 console.log('Upserted four fictional demo members.');

@@ -53,3 +53,8 @@ export interface SessionCreationOperation {
   readonly hostToken: string;
   readonly idempotencyKey: string;
 }
+
+export interface ParticipantJoinOperation {
+  readonly participantToken: string;
+  readonly idempotencyKey: string;
+}

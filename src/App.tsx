@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { GameDefinition, GameQuestionDefinition, GameSummary, SessionCreationOperation } from './domain/admin';
 import type { Choice, GamePhase, GameSnapshot, HostAction } from './domain/game';
@@ -9,7 +9,7 @@ import {
   joinRoom, listGames, loadGameMediaBlob, performDirectHostAction, playAgain, submitAnswer, updateGame, uploadGameMedia,
 } from './lib/api';
 import { adminSession, hostSession, participantSession, type HostSession, type ParticipantSession } from './lib/session';
-import { newSessionOperation } from './lib/sessionOperation';
+import { newParticipantJoinOperation, newSessionOperation } from './lib/sessionOperation';
 import { preloadAssets, preloadedImageObjectUrl, releaseRoomAssets, revealObjectUrl, type PreloadAsset } from './lib/assetPreloader';
 import { normalizeUpload } from './lib/imageUpload';
 
@@ -130,6 +130,7 @@ function GameEnded({ code }: { code: string }) {
 
 function Join({ code }: { code: string }) {
   const existing = participantSession.get(code);
+  const [operation] = useState(newParticipantJoinOperation);
   const [name, setName] = useState(existing?.displayName ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +142,7 @@ function Join({ code }: { code: string }) {
     if (!name.trim()) return;
     setBusy(true); setError(null);
     try {
-      const response = await joinRoom(code, name.trim());
+      const response = await joinRoom(code, name.trim(), operation);
       participantSession.set({ ...response.participant, code, token: response.participantToken });
       navigate(`/play/${code}`);
     } catch (reason) {
@@ -191,16 +192,26 @@ function Results({ snapshot, large = false }: { snapshot: GameSnapshot; large?: 
 
 function ParticipantGame({ code, session }: { code: string; session: ParticipantSession }) {
   const auth = useMemo(() => ({ token: session.token, playerId: session.playerId }), [session.playerId, session.token]);
-  const room = useRoomSnapshot(code, auth);
+  const room = useRoomSnapshot(code, auth, 'participant');
   useEffect(() => () => releaseRoomAssets(code), [code]);
   const [selected, setSelected] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [preloadedRevealUrl, setPreloadedRevealUrl] = useState<string | null>(null);
   const [revealPreloadFailed, setRevealPreloadFailed] = useState(false);
+  const answerRequestRef = useRef(0);
+  const currentQuestionRoundRef = useRef<number | null>(null);
+  currentQuestionRoundRef.current = room.snapshot?.phase === 'question_open' ? room.snapshot.roundIndex : null;
   const answerId = room.participantState?.answerEmployeeId ?? selected;
-  useEffect(() => { if (room.snapshot?.phase === 'question_open' && !room.participantState?.answerEmployeeId) setSelected(null); }, [room.snapshot?.roundIndex, room.snapshot?.phase, room.participantState?.answerEmployeeId]);
-  useEffect(() => { preloadAssets(room.snapshot?.preloadAssets); }, [room.snapshot?.preloadAssets]);
+  useEffect(() => {
+    answerRequestRef.current += 1;
+    setSubmitting(false);
+    setSubmitError(null);
+    if (room.snapshot?.phase === 'question_open' && !room.participantState?.answerEmployeeId) setSelected(null);
+  }, [room.snapshot?.roundIndex, room.snapshot?.phase, room.participantState?.answerEmployeeId]);
+  useEffect(() => preloadAssets(room.snapshot?.preloadAssets, {
+    phase: room.snapshot?.phase ?? 'lobby', currentRound: room.snapshot?.roundIndex ?? null, seed: session.playerId,
+  }), [room.snapshot?.phase, room.snapshot?.preloadAssets, room.snapshot?.roundIndex, session.playerId]);
   useEffect(() => {
     const revealed = room.snapshot?.revealedEmployee;
     const revealPhase = ['employee_revealed', 'results_displayed'].includes(room.snapshot?.phase ?? '');
@@ -219,10 +230,19 @@ function ParticipantGame({ code, session }: { code: string; session: Participant
 
   async function choose(choice: Choice) {
     if (answerId || room.snapshot?.phase !== 'question_open' || submitting) return;
+    const submittedRound = room.snapshot.roundIndex;
+    if (submittedRound === null) return;
+    const request = ++answerRequestRef.current;
     setSelected(choice.id); setSubmitting(true); setSubmitError(null);
-    try { await submitAnswer(code, session.token, session.playerId, choice.id); await room.refetch(true); }
-    catch (reason) { setSelected(null); setSubmitError(errorMessage(reason)); }
-    finally { setSubmitting(false); }
+    try { await submitAnswer(code, session.token, session.playerId, choice.id); room.markAnswered(choice.id, submittedRound); }
+    catch (reason) {
+      if (request === answerRequestRef.current && currentQuestionRoundRef.current === submittedRound) {
+        setSelected(null);
+        setSubmitError(errorMessage(reason));
+      }
+    } finally {
+      if (request === answerRequestRef.current && currentQuestionRoundRef.current === submittedRound) setSubmitting(false);
+    }
   }
 
   if (room.loading && !room.snapshot) return <main className="participant-shell"><Spinner /></main>;
@@ -503,7 +523,7 @@ const actionForPhase: Partial<Record<GamePhase, { action: HostAction; label: str
 };
 
 function HostDashboard({ session }: { session: HostSession }) {
-  const room = useRoomSnapshot(session.code);
+  const room = useRoomSnapshot(session.code, undefined, 'host');
   const [busy, setBusy] = useState<HostAction | 'play_again' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hostRoom, setHostRoom] = useState<Awaited<ReturnType<typeof getHostRoom>>['host'] | null>(null);
@@ -553,9 +573,11 @@ function HostRoute({ code }: { code: string }) {
 }
 
 function Display({ code }: { code: string }) {
-  const room = useRoomSnapshot(code);
+  const room = useRoomSnapshot(code, undefined, 'display');
   useEffect(() => () => releaseRoomAssets(code), [code]);
-  useEffect(() => { preloadAssets(room.snapshot?.preloadAssets); }, [room.snapshot?.preloadAssets]);
+  useEffect(() => preloadAssets(room.snapshot?.preloadAssets, {
+    phase: room.snapshot?.phase ?? 'lobby', currentRound: room.snapshot?.roundIndex ?? null, seed: `display:${code}`,
+  }), [code, room.snapshot?.phase, room.snapshot?.preloadAssets, room.snapshot?.roundIndex]);
   const mysterySrc = useMysteryImage(room.snapshot?.roundIndex ?? null, room.snapshot?.preloadAssets, room.snapshot?.mysteryImageUrl ?? room.snapshot?.silhouetteUrl);
   if (room.loading && !room.snapshot) return <main className="display-shell"><Spinner /></main>;
   if (!room.snapshot) return <main className="display-shell display-center"><h1>Room not found</h1><p>{room.error}</p></main>;

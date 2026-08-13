@@ -1,35 +1,44 @@
-import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GameSnapshot, ParticipantSnapshot } from '../domain/game';
 import { errorMessage, getSnapshot } from '../lib/api';
-import { isPriorityPhaseInvalidation, RealtimeInvalidationGate } from '../lib/realtimeGate';
-import { parsePushedSnapshot, preserveRevealEnrichment, shouldReplaceSnapshot } from '../lib/snapshot';
+import { isPriorityPhaseInvalidation } from '../lib/realtimeGate';
+import { deterministicPollJitter, subscribeToRoom } from '../lib/realtimeClient';
+import { mergeCountOnlySnapshot, parsePushedSnapshot, preserveRevealEnrichment, shouldReplaceSnapshot } from '../lib/snapshot';
 
 interface ParticipantAuth { readonly token: string; readonly playerId: string }
+export type RoomClientRole = 'participant' | 'host' | 'display';
 
-export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
+export function useRoomSnapshot(code: string, participant?: ParticipantAuth, role: RoomClientRole = 'participant') {
   const participantToken = participant?.token;
   const participantPlayerId = participant?.playerId;
   const [snapshot, setSnapshotState] = useState<GameSnapshot | null>(null);
   const [participantState, setParticipantState] = useState<ParticipantSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [realtimeWarning, setRealtimeWarning] = useState<string | null>(null);
   const [offline, setOffline] = useState(!navigator.onLine);
   const abortRef = useRef<AbortController | null>(null);
   const generationRef = useRef(0);
   const inFlightRef = useRef(false);
   const queuedRef = useRef(false);
   const snapshotVersionRef = useRef(-1);
-  const broadcastTimerRef = useRef<number | null>(null);
-  const invalidationGateRef = useRef(new RealtimeInvalidationGate());
   const snapshotPhaseRef = useRef<string | null>(null);
   const snapshotRoundRef = useRef<number | null>(null);
   const lastPushedVersionRef = useRef(-1);
   const snapshotRef = useRef<GameSnapshot | null>(null);
+  const stopLiveRef = useRef<(() => void) | null>(null);
   const refetchRef = useRef<(quiet?: boolean, source?: 'recovery' | 'broadcast' | 'transition') => Promise<void>>(() => Promise.resolve());
 
   const applySnapshot = useCallback((next: GameSnapshot, source: 'http' | 'push', nextParticipant?: ParticipantSnapshot | null, updateParticipant = false) => {
     const currentVersion = snapshotVersionRef.current;
+    const countRefresh = source === 'http' && role !== 'participant' ? mergeCountOnlySnapshot(snapshotRef.current, next) : null;
+    if (countRefresh) {
+      setSnapshotState(countRefresh);
+      snapshotRef.current = countRefresh;
+      setError(null);
+      setLoading(false);
+      return true;
+    }
     if (!shouldReplaceSnapshot(source, next.version, currentVersion, lastPushedVersionRef.current)) {
       if (updateParticipant && next.roundIndex === snapshotRoundRef.current) setParticipantState(nextParticipant ?? null);
       return false;
@@ -47,7 +56,7 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
     setError(null);
     setLoading(false);
     return true;
-  }, []);
+  }, [role]);
 
   const refetch = useCallback(async (quiet = false, source: 'recovery' | 'broadcast' | 'transition' = 'recovery') => {
     if (inFlightRef.current) {
@@ -96,48 +105,63 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
     snapshotRoundRef.current = null;
     lastPushedVersionRef.current = -1;
     snapshotRef.current = null;
-    invalidationGateRef.current = new RealtimeInvalidationGate();
     setSnapshotState(null);
     setParticipantState(null);
     setError(null);
+    setRealtimeWarning(null);
     setLoading(true);
     void refetch();
-    const timer = window.setInterval(() => { void refetch(true); }, 8_000);
-    const onOnline = () => { setOffline(false); void refetch(true); };
-    const onOffline = () => setOffline(true);
-    const onVisibility = () => { if (document.visibilityState === 'visible') void refetch(true); };
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    document.addEventListener('visibilitychange', onVisibility);
-
-    let channel: RealtimeChannel | undefined;
-    let realtimeClient: SupabaseClient | undefined;
+    let pollTimer: number | null = null;
+    let retryTimer: number | null = null;
+    let closeChannel: (() => void) | undefined;
     let cancelled = false;
-    const url = import.meta.env.VITE_SUPABASE_URL;
-    const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    if (url && key) {
-      const initializeRealtime = async () => {
-        try {
-          const client = createClient(url, key, {
-            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
-          });
-          realtimeClient = client;
-          const existing = await client.auth.getSession();
-          if (existing.error) throw existing.error;
-          let accessToken = existing.data.session?.access_token;
-          if (!accessToken) {
-            const signedIn = await client.auth.signInAnonymously({
-              options: { data: { application: 'name-that-realtime' } },
-            });
-            if (signedIn.error || !signedIn.data.session) {
-              throw signedIn.error ?? new Error('Anonymous Realtime sign-in did not return a session.');
-            }
-            accessToken = signedIn.data.session.access_token;
-          }
-          await client.realtime.setAuth(accessToken);
-          if (cancelled) return;
-          const nextChannel = client.channel(`room:${code}`, { config: { private: true } })
-            .on('broadcast', { event: 'room_snapshot_changed' }, ({ payload }) => {
+    let liveStopped = false;
+    let initializingRealtime = false;
+    let realtimeSubscribed = false;
+    let retryAttempt = 0;
+    const pollDelay = () => {
+      if (role !== 'participant') return 2_000;
+      if (!realtimeSubscribed) {
+        return 10_000 + deterministicPollJitter(`${code}:${participantPlayerId ?? 'spectator'}:degraded`, 5_000);
+      }
+      return 60_000 + deterministicPollJitter(`${code}:${participantPlayerId ?? 'spectator'}`);
+    };
+    const schedulePoll = () => {
+      if (cancelled || liveStopped) return;
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
+      pollTimer = window.setTimeout(() => {
+        pollTimer = null;
+        void refetchRef.current(true, 'recovery').finally(schedulePoll);
+      }, pollDelay());
+    };
+    const scheduleRealtimeRetry = () => {
+      if (cancelled || liveStopped || retryTimer !== null) return;
+      const base = Math.min(30_000, 1_000 * (2 ** Math.min(retryAttempt, 5)));
+      const delay = base + deterministicPollJitter(
+        `${code}:${participantPlayerId ?? role}:realtime-retry:${retryAttempt}`,
+        Math.min(1_000, Math.floor(base / 2)),
+      );
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void initializeRealtime();
+      }, delay);
+    };
+    const markRealtimeDisconnected = () => {
+      if (cancelled || liveStopped) return;
+      closeChannel = undefined;
+      realtimeSubscribed = false;
+      setRealtimeWarning('Live connection interrupted. Using safety updates while reconnecting.');
+      schedulePoll();
+      scheduleRealtimeRetry();
+    };
+    async function initializeRealtime() {
+      if (initializingRealtime || closeChannel || cancelled || liveStopped) return;
+      initializingRealtime = true;
+      let subscriptionAlive = true;
+      try {
+        const close = await subscribeToRoom(code, {
+          onBroadcast: ({ payload }) => {
               const broadcastPayload: unknown = payload;
               if (
                 typeof broadcastPayload === 'object' && broadcastPayload !== null
@@ -150,54 +174,81 @@ export function useRoomSnapshot(code: string, participant?: ParticipantAuth) {
                 const priority = isPriorityPhaseInvalidation(version, snapshotVersionRef.current, phase, snapshotPhaseRef.current)
                   || (version === snapshotVersionRef.current && version !== lastPushedVersionRef.current && pushed !== null);
                 if (priority) {
-                  if (broadcastTimerRef.current !== null) {
-                    window.clearTimeout(broadcastTimerRef.current);
-                    broadcastTimerRef.current = null;
-                  }
-                  invalidationGateRef.current.reset();
                   const next = parsePushedSnapshot(pushed, code, version, phase);
                   if (next) applySnapshot(next, 'push');
                   else void refetch(true, 'transition');
-                  return;
-                }
-                const delay = invalidationGateRef.current.consider(version, snapshotVersionRef.current, Date.now(), inFlightRef.current);
-                if (delay === 0) {
-                  void refetch(true, 'broadcast');
-                } else if (delay !== null && broadcastTimerRef.current === null) {
-                  broadcastTimerRef.current = window.setTimeout(() => {
-                    broadcastTimerRef.current = null;
-                    invalidationGateRef.current.consumeTrailing(Date.now());
-                    if (version > snapshotVersionRef.current) void refetchRef.current(true, 'broadcast');
-                  }, delay);
                 }
               }
-            });
-          channel = nextChannel;
-          nextChannel.subscribe((status) => {
-            if (!cancelled && String(status) === 'SUBSCRIBED') void refetchRef.current(true, 'recovery');
-          });
-        } catch {
-          // Realtime is an optimization. Polling, online, and visibility recovery remain active.
-          if (channel && realtimeClient) void realtimeClient.removeChannel(channel);
-          channel = undefined;
-        }
-      };
-      void initializeRealtime();
+          },
+          onSubscribed: () => {
+            if (cancelled || liveStopped) return;
+            realtimeSubscribed = true;
+            retryAttempt = 0;
+            if (retryTimer !== null) window.clearTimeout(retryTimer);
+            retryTimer = null;
+            setRealtimeWarning(null);
+            schedulePoll();
+            void refetchRef.current(true, 'recovery');
+          },
+          onDisconnected: () => {
+            subscriptionAlive = false;
+            markRealtimeDisconnected();
+          },
+        });
+        if (cancelled || liveStopped || !subscriptionAlive) close();
+        else closeChannel = close;
+      } catch {
+        markRealtimeDisconnected();
+      } finally {
+        initializingRealtime = false;
+      }
     }
+    const onOnline = () => { setOffline(false); void refetch(true); if (!closeChannel) void initializeRealtime(); };
+    const onOffline = () => setOffline(true);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refetch(true);
+        if (!closeChannel) void initializeRealtime();
+      }
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const stopLive = () => {
+      liveStopped = true;
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      pollTimer = null;
+      retryTimer = null;
+      closeChannel?.();
+      closeChannel = undefined;
+    };
+    stopLiveRef.current = stopLive;
+    schedulePoll();
+    void initializeRealtime();
 
     return () => {
       cancelled = true;
       generationRef.current += 1;
       abortRef.current?.abort();
-      if (broadcastTimerRef.current !== null) window.clearTimeout(broadcastTimerRef.current);
-      window.clearInterval(timer);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       document.removeEventListener('visibilitychange', onVisibility);
-      if (channel && realtimeClient) void realtimeClient.removeChannel(channel);
+      stopLive();
+      if (stopLiveRef.current === stopLive) stopLiveRef.current = null;
     };
-  }, [applySnapshot, code, participantPlayerId, participantToken, refetch]);
+  }, [applySnapshot, code, participantPlayerId, participantToken, refetch, role]);
+
+  useEffect(() => {
+    if (snapshot?.phase === 'complete') stopLiveRef.current?.();
+  }, [snapshot?.phase]);
 
   const setSnapshot = useCallback((next: GameSnapshot) => { applySnapshot(next, 'http'); }, [applySnapshot]);
-  return { snapshot, participantState, loading, error, offline, refetch, setSnapshot };
+  const markAnswered = useCallback((answerEmployeeId: string, roundIndex: number) => {
+    if (!participantPlayerId || snapshotRef.current?.phase !== 'question_open' || snapshotRef.current.roundIndex !== roundIndex) return false;
+    setParticipantState({ playerId: participantPlayerId, answerEmployeeId });
+    return true;
+  }, [participantPlayerId]);
+  return { snapshot, participantState, loading, error: error ?? realtimeWarning, offline, refetch, setSnapshot, markAnswered };
 }

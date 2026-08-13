@@ -176,6 +176,46 @@ test('participant submitted and locked states preserve the immutable choice', as
   }
 });
 
+test('a delayed answer response cannot lock the following round', async ({ page }) => {
+  await participantSession(page);
+  let currentRound = 0;
+  let version = 1;
+  let releaseAnswer: (() => void) | undefined;
+  const answerBarrier = new Promise<void>((resolve) => { releaseAnswer = resolve; });
+  await page.route('**/api/rooms/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/answers') && request.method() === 'POST') {
+      await answerBarrier;
+      await route.fulfill({ json: { answer: { accepted: true, idempotent: false, employeeId: ids.maya } } });
+      return;
+    }
+    if (url.pathname.endsWith('/snapshot')) {
+      await route.fulfill({ json: {
+        snapshot: { ...snapshot('question_open'), roundIndex: currentRound, roundCount: 2, version },
+        participant: { playerId: ids.player, answerEmployeeId: null },
+      } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'Not found.' } } });
+  });
+
+  await page.goto(`/play/${code}`);
+  await expect(page.getByText('Round 1 / 2')).toBeVisible();
+  await page.locator('.choice').first().click();
+  await expect(page.getByText(/Locked in: Maya Chen/)).toBeVisible();
+
+  currentRound = 1;
+  version = 2;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.getByText('Round 2 / 2')).toBeVisible();
+  await expect(page.locator('.choice').first()).toBeEnabled();
+
+  releaseAnswer?.();
+  await expect(page.getByText(/Locked in: Maya Chen/)).toHaveCount(0);
+  await expect(page.locator('.choice').first()).toBeEnabled();
+});
+
 test('participant reveal uses the protected portrait response', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await participantSession(page);
