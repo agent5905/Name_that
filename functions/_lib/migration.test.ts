@@ -24,6 +24,7 @@ const directHostPhaseAction = readFileSync(new URL('../../supabase/migrations/20
 const capacity225 = readFileSync(new URL('../../supabase/migrations/202608110015_225_participant_capacity.sql',import.meta.url),'utf8');
 const leaderboardPhase = readFileSync(new URL('../../supabase/migrations/202608110016_leaderboard_phase.sql',import.meta.url),'utf8');
 const scoring = readFileSync(new URL('../../supabase/migrations/202608110017_authoritative_scoring.sql',import.meta.url),'utf8');
+const scoringBroadcastFix = readFileSync(new URL('../../supabase/migrations/202608110018_scoring_broadcast_variable_fix.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
@@ -75,6 +76,9 @@ describe('authoritative migration regression guards', () => {
     expect(scoring).toContain("p_action not in('start','lock','reveal','show_results','show_leaderboard','next_round','end')");
     expect(scoring).toContain("new.phase is not distinct from old.phase and new.round_index is not distinct from old.round_index then return null");
     expect(scoring).toContain("'leaderboard',new.leaderboard");
+    expect(scoringBroadcastFix).toContain('where r.code=v_code');
+    expect(scoringBroadcastFix).not.toContain('where r.code=code');
+    expect(applyScript).toContain("['202608110018', '../supabase/migrations/202608110018_scoring_broadcast_variable_fix.sql']");
   });
   it('raises the effective serialized admission boundary to exactly 225 with retry-stable joins', () => {
     const join = capacity225.slice(capacity225.indexOf('function public.join_room('), capacity225.indexOf('function public.submit_answer('));
