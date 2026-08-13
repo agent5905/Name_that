@@ -9,6 +9,7 @@ _worker.bundle
 test-results/
 playwright-report/
 blob-report/
+.capacity-work/
 *.tsbuildinfo
 
 # Local environment files (the example is intentionally tracked)
