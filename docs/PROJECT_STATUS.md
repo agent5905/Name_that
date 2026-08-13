@@ -2,7 +2,7 @@
 
 ## Current state
 
-The integrated participant, host-control, and shared-display baseline is deployed at `https://name-that-team-member.pages.dev`. The 175-person capacity hardening is in progress and must not be represented as release-ready until the live tenant limit blocker, updated integration gate, staged reports, final 225-client rehearsal, and real-browser gauntlet recorded in `docs/CAPACITY.md` are complete.
+The integrated participant, host-control, and shared-display baseline is deployed at `https://name-that-team-member.pages.dev`. The 175-person production-size and 225-participant engineering-capacity rehearsals passed on 2026-08-13. The remaining release evidence is the Cloudflare Functions dashboard checkpoint and completion of the deferred browser-only suite after the production image-upload limiter's `Retry-After` window. See `docs/CAPACITY.md` for the immutable reports and caveats.
 
 ## Verified
 
@@ -10,12 +10,12 @@ Verified locally on 2026-08-11 with Node.js 24.18.0 and npm 11.16.0:
 
 - `npm run lint` - passed with zero warnings;
 - `npm run typecheck` - passed;
-- `npm test` - 36 domain, recovery, API, and migration guards passed;
+- `npm test` - 104 domain, recovery, API, migration, Realtime, and preload guards passed;
 - `npm run build` - passed with Vite 7.3.6 and no production source maps;
 - `npm run check:functions` - all API Functions compiled successfully;
 - `npm run check:bundle` - public artifacts passed source-map and server-secret checks;
-- `npm run test:e2e` - 12 participant, host, and display browser journeys passed, including HTTP 500/network preservation and 401 host-session invalidation;
-- historical `npm run test:integration` baseline - passed against the configured Supabase project, including private Broadcast delivery/forgery denial, RLS, Storage, randomized rounds, immutable answers, result math, and the former 100-player cap; the new 225-capacity/phase-only test must pass after deployment;
+- `npm run test:e2e` - 22 participant, host, display, routing, delayed-answer, and recovery browser journeys passed;
+- production integration and capacity gates passed against the configured Supabase project, including receive-only private Broadcast, RLS, Storage, randomized rounds, immutable answers, exact 225 admission/226th rejection, phase-only fan-out, answer/Lock races, and result math;
 - `npm run test:smoke` - passed through local Wrangler Pages/Functions against the live Supabase project, from health and room creation through protected portrait reveal and results; the exact test room was removed afterward;
 - `npm run test:smoke` with exact remote-host opt-in - passed the same HTTP lifecycle on the stable production Pages alias;
 - `npm run test:smoke:browser` - real Chrome passed a deployed host/participant event through answer, lock, reveal, protected portrait decode, results, and the 1280x720 shared display;
@@ -35,12 +35,12 @@ Verified locally on 2026-08-11 with Node.js 24.18.0 and npm 11.16.0:
 - Room creation is limited atomically to five attempts per hashed Cloudflare source in 15 minutes; rejected attempts persist and return `429` with `Retry-After`.
 - Opportunistic locked cleanup retains completed rooms for 12 hours and expires otherwise inactive room graphs after 24 hours, with no scheduler dependency.
 
-The baseline versioned Supabase migrations and four private fictional portraits are applied to the configured `IceBreaker` project. The capacity migration and runtime configuration require fresh live verification. The revised audience protocol creates no per-attendee Supabase Auth users; integration and capacity runs still remove only their exact rooms and limiter records.
+The versioned Supabase migrations, including migration 015 for the 225-participant protocol, are applied to the configured `IceBreaker` project. The revised audience protocol creates no per-attendee Supabase Auth users; integration and capacity runs remove only their exact rooms and limiter records.
 
 Cloudflare Pages project `name-that-team-member` is live with encrypted `SUPABASE_URL` and `SUPABASE_SECRET_KEY` runtime bindings. The stable origin and the exact production deployment passed HTTP and browser smoke checks. A post-run audit found zero matching smoke rooms and zero tagged Realtime users.
 
 ## Capacity release gate
 
-The 2026-08-13 read-only audit found the Realtime tenant still configured for 200 concurrent users, 100 messages/second, and 100 joins/second. That cannot support 225 participants plus host/display and is a hard blocker even if the organization is billed as Pro. Verify at least the Pro 500/500/500 limits in the live tenant and confirm database compute/pool and Cloudflare Functions headroom before any final rehearsal. No paid-plan change is authorized by this status document.
+The 2026-08-13 audit initially found the Realtime tenant at 200 concurrent users, 100 messages/second, and 100 joins/second. Under the already-approved Supabase Pro entitlement, those tenant settings were raised and read back at 500 concurrent users, 500 messages/second, 500 joins/second, and a 3000 KiB payload ceiling. No billing plan, spend cap, Cloudflare service, or database compute size was changed.
 
-Capacity completion requires immutable reports for 5, 10, 25, 50, 100, 175, and 225 stages; zero failed joins/answers; exact answer totals; no same-phase audience broadcasts; no missed phase transitions; reconnect identity/idempotency success; host/display responsiveness; production dashboard observations; and verified cleanup. Until those artifacts exist, the conclusion is **NOT YET PROVEN**.
+Immutable reports now exist for 5, 10, 25, 50, 100, 175, and 225 participants. The first full 225 run passed with 225/225 joins, exact answer accounting, a successful 226th `ROOM_FULL` boundary test, zero missed/same-phase/malformed Realtime events, 23/23 reconnects, a responsive real host and display, healthy generator metrics, zero Supabase edge 5xx/Realtime errors, and verified exact cleanup. Application capacity is **PASS** for the 175-person event with 225-participant headroom. Overall release evidence remains **BLOCKED** only on Cloudflare Functions dashboard visibility and the browser-only suite deferred by the active image-upload `Retry-After` window; neither is silently waived.

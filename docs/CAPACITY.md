@@ -2,7 +2,7 @@
 
 ## Release conclusion
 
-**NOT YET PROVEN.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. The Realtime tenant limit blocker has been cleared, but no release claim is valid until the staged production reports, final rehearsal, platform evidence, real-browser gauntlet, and cleanup are recorded here.
+**CAPACITY REHEARSAL PASSED; FINAL RELEASE EVIDENCE PARTIALLY BLOCKED.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. All staged protocol runs, including the first full 225-participant rehearsal with real host/display browsers, passed and cleaned up exactly. The remaining external release checkpoint is Cloudflare Functions dashboard evidence; the configured token can deploy Pages but cannot read Workers analytics. A post-rehearsal full browser suite was also correctly throttled by the production image-upload limiter and must be resumed only after its `Retry-After` window, not bypassed.
 
 ## Read-only production audit — 2026-08-13
 
@@ -14,7 +14,7 @@
 | Realtime joins/second | 500 | At least 500 | **READY FOR STAGED TEST** |
 | Realtime payload ceiling | 3000 KiB | Transition snapshots below the configured ceiling | **READY FOR STAGED TEST** |
 | Anonymous Auth sign-ins | Enabled; 120/hour/IP | Not used by the audience protocol | Remove from capacity path |
-| Database connection setting | 60; API pool observed at 10 with no waiting/timeouts | No pool waiting/timeouts or database saturation | Verify under staged load |
+| Database connection setting | 60; API pool observed at 10 with no waiting/timeouts | No pool waiting/timeouts or database saturation | **PASS IN REHEARSAL** |
 | Database compute | No selected compute add-on was visible; approximately 455 MiB VM memory was observed | Confirm effective compute and headroom in dashboard | **UNCONFIRMED** |
 | Cloudflare Pages | Production branch `main`; Functions enabled | Confirm Workers plan, request/error/CPU behavior | **UNCONFIRMED** |
 
@@ -44,7 +44,7 @@ Run the checked-in protocol harness in order. Stop on unexplained errors, failed
 | 50 | DB/API contention trend | [`50-client.json`](capacity-results/50-client.json) | **PASS** |
 | 100 | Realtime/Pages trend and dashboard correlation | [`100-client.json`](capacity-results/100-client.json) | **PASS** |
 | 175 | Real audience target | [`175-client.json`](capacity-results/175-client.json) | **PASS** |
-| 225 | Engineering headroom; run once after all critical fixes | _pending_ | _pending_ |
+| 225 | Engineering headroom; run once after all critical fixes | [`225-client.json`](capacity-results/225-client.json) | **PASS** |
 
 Every stage must record the immutable deployed commit/deployment ID, attempted/successful/failed joins, join and answer latency distributions, duplicate-answer integrity, exact authoritative totals, active/peak subscriptions, transition delivery, missed/duplicate/forbidden events, reconnect identity/idempotency, Pages/Supabase request counts, load-generator health, platform dashboard observations, and exact cleanup outcome.
 
@@ -60,6 +60,7 @@ All passing reports target commit `1b3af4d795b21fc08e3c1d56e90aae8a3d6ee0b3`, Cl
 | 50 | 59.4 s | 179.7 ms | 703.2 ms | 179.9 ms | 296.0 ms | 5/5 | 371 | 647 | 100.8 MiB / 32.1 ms |
 | 100 | 60.5 s | 220.3 ms | 647.4 ms | 268.7 ms | 252.5 ms | 10/10 | 731 | 1,295 | 133.6 MiB / 32.4 ms |
 | 175 | 60.6 s | 208.2 ms | 613.5 ms | 663.3 ms | 336.0 ms | 18/18 | 1,298 | 2,266 | 154.4 MiB / 32.4 ms |
+| 225 | 69.7 s | 238.9 ms | 675.8 ms | 1,937.8 ms | 519.2 ms | 23/23 | 1,671 | 2,913 | 207.0 MiB / 32.4 ms |
 
 Every passing stage recorded all intended joins and answers, exact Results totals, one channel per simulated browser, zero missed transitions, zero same-phase events, zero malformed events/channel errors, and zero unexpected error categories. The first 5-client attempt is retained as [`5-client-failed-reconnect-harness.json`](capacity-results/5-client-failed-reconnect-harness.json): it exposed that the simulator waited for a manually removed channel to resurrect, while production replaces a terminal channel lease. The harness was corrected to recreate one channel on the same client and the controlled 5-client rerun passed; no deployed runtime change was made for that harness-only defect.
 
@@ -71,7 +72,13 @@ For the exact 100-client window, Supabase Management logs again showed 0 edge 5x
 
 The first and only 175-client run passed: 175/175 joined, all 525 logical answers resolved (524 accepted and one valid `ANSWERS_CLOSED` at the Lock boundary), and all 18 reconnect clients recovered identity and idempotent answer state. Delivery had zero misses across 2,266 transition messages, zero same-phase events, zero malformed events/channel errors, and a worst participant transition of 336.0 ms. The exact window again had 0 Supabase edge 5xx and 0 Realtime log events; 55 `P0001` exceptions exactly match 54 immutable duplicate-choice probes plus the one expected Lock-boundary rejection.
 
+The first and only full 225-participant run also passed, with 227 simultaneous product clients after adding one real 1440×900 host and one real 1280×720 display. All 225 participants joined; the single 226th boundary probe was rejected with `ROOM_FULL`. Across three rounds, 667 answers committed and eight requests lost the deliberate answer-vs-Lock race with `ANSWERS_CLOSED`, exactly accounting for all 675 logical attempts. All 23 reconnect clients recovered their original identities and idempotent answer state. The run delivered 2,913 Realtime transition messages with zero misses, same-phase events, malformed events, channel errors, or unexpected error categories. All 359 snapshot requests succeeded. Host controls completed every transition; participant transition p95 was 455.3 ms and the maximum was 519.2 ms. The real host and display produced 13 phase observations with no console, page, unexpected request, or server errors. The load generator remained healthy at 207.0 MiB peak RSS, 32.4 ms event-loop p95, and 1.8% single-core CPU.
+
+The exact Supabase window for the 225 run showed zero edge 5xx responses and zero Realtime log errors. Its 78 `P0001` application exceptions exactly match 69 immutable duplicate probes, eight expected answer/Lock closures, and the one expected `ROOM_FULL`. Minute usage showed no Auth sign-ins, consistent with the public legacy anon JWT capacity path. A post-run Metrics scrape reported zero pool waiting and zero pool timeouts, nine of ten PostgREST connections available, database load averages of 0.12/0.28/0.18, and about 169 MiB available of the observed 455 MiB VM memory. This post-run scrape is not represented as a continuous time series; the exact client, latency, error, and cumulative timeout evidence comes from the harness and platform logs.
+
 The final browser instrumentation was validated separately with the passing [`browser-smoke/5-client.json`](capacity-results/browser-smoke/5-client.json). One real 1440×900 host context drove all 13 controls and one real 1280×720 display context rendered every phase and decoded the tiny Mystery/Reveal images. Host phase UI max was 1,091.9 ms; display phase UI max was 496.2 ms. There were no console/page/unexpected request/5xx errors. Thirteen `ERR_ABORTED` requests were the expected cancellation of stale HTTP recovery when a newer phase push won; they are recorded separately from failures. A prior nondeterministic smoke with four same-phase notifications is retained as a failure; the subsequent instrumented run had zero, and the 225 rehearsal retains a strict zero gate rather than waiving it.
+
+The 225 rehearsal captured the shared display at question, reveal, results, and completion, plus the host completion state. These screenshots are checked in beside the JSON report. They show decoded Mystery/Reveal media, the expected results presentation, and the host's final `225 Players / 225 Answers` state. The smaller all-browser acceptance suite was started afterward but stopped at its first media upload with an expected source limiter response (`429`, `Retry-After: 1395` seconds); it created no room and its exact isolated admin/game teardown completed. That limiter event is not a product failure and must not be bypassed. The suite remains a pending browser-only checkpoint after the stated window.
 
 ## Hard pass/fail gates
 
