@@ -4,11 +4,12 @@ export const gamePhases = [
   'answers_locked',
   'employee_revealed',
   'results_displayed',
+  'leaderboard_displayed',
   'complete',
 ] as const;
 
 export type GamePhase = (typeof gamePhases)[number];
-export type HostAction = 'start' | 'lock' | 'reveal' | 'show_results' | 'next_round' | 'end';
+export type HostAction = 'start' | 'lock' | 'reveal' | 'show_results' | 'show_leaderboard' | 'next_round' | 'end';
 
 export interface Choice {
   readonly id: string;
@@ -22,6 +23,8 @@ export interface RevealedEmployee {
   readonly team: string | null;
   readonly funFact: string | null;
   readonly mediaAvailable: boolean;
+  readonly mediaKey?: string | null;
+  readonly revealKey?: import('../lib/assetPreloader').RevealKey | null;
 }
 
 export interface ChoiceResult {
@@ -35,29 +38,59 @@ export interface GameResults {
   readonly choices: readonly ChoiceResult[];
 }
 
+export interface LeaderboardEntry {
+  readonly rank: number;
+  readonly displayName: string;
+  readonly totalScore: number;
+  readonly correctAnswers: number;
+}
+
+export interface GameLeaderboard {
+  readonly isFinal: boolean;
+  readonly entries: readonly LeaderboardEntry[];
+}
+
 export interface GameSnapshot {
   readonly roomCode: string;
   readonly phase: GamePhase;
   readonly roundIndex: number | null;
   readonly roundCount: number;
   readonly connectedParticipantCount: number;
+  readonly eligibleParticipantCount?: number;
   readonly submittedAnswerCount: number;
   readonly version: number;
   readonly choices: readonly Choice[];
   readonly revealedEmployee: RevealedEmployee | null;
   readonly results: GameResults | null;
+  readonly leaderboard: GameLeaderboard | null;
   readonly updatedAt: string;
+  readonly prompt?: string;
+  readonly mysteryImageUrl?: string | null;
+  readonly silhouetteUrl?: string | null;
+  readonly preloadAssets?: readonly import('../lib/assetPreloader').PreloadAsset[];
 }
 
 export interface Participant {
   readonly playerId: string;
   readonly roomId: string;
   readonly displayName: string;
+  readonly eligibleFromRound?: number;
 }
 
 export interface ParticipantSnapshot {
   readonly playerId: string;
   readonly answerEmployeeId: string | null;
+  readonly totalScore: number;
+  readonly roundFeedback: {
+    readonly roundIndex: number;
+    readonly outcome: 'correct' | 'incorrect' | 'no_answer';
+    readonly points: number;
+    readonly streak: number;
+  } | null;
+  readonly standing: {
+    readonly rank: number;
+    readonly totalScore: number;
+  } | null;
 }
 
 export interface HostRoom {
@@ -69,6 +102,9 @@ export interface HostRoom {
   readonly isFinalRound: boolean;
   readonly correctEmployee: { readonly id: string; readonly displayName: string; readonly team: string | null } | null;
   readonly version: number;
+  readonly gameId?: string | null;
+  readonly gameRevision?: number | null;
+  readonly gameName?: string | null;
 }
 
 export function isGamePhase(value: unknown): value is GamePhase {
@@ -81,5 +117,6 @@ export const phaseLabels: Record<GamePhase, string> = {
   answers_locked: 'Answers locked',
   employee_revealed: 'Teammate revealed',
   results_displayed: 'Results live',
+  leaderboard_displayed: 'Leaderboard live',
   complete: 'Game complete',
 };

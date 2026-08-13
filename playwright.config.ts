@@ -7,7 +7,10 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4179',
+    // Launch Vite directly so Playwright owns the server process. On Windows,
+    // launching it through npm leaves the Vite child alive after the tests and
+    // prevents an otherwise successful release gate from terminating.
+    command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4179',
     url: 'http://127.0.0.1:4179',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

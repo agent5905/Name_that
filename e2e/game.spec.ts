@@ -20,6 +20,17 @@ const choices = [
   { id: ids.mateo, displayName: 'Mateo Alvarez', position: 3 },
 ];
 
+function rasterFixture(width: number, height: number, brightness: number) {
+  const png = new PNG({ width, height });
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const offset = (y * width + x) * 4;
+    const variation = Math.round(28 * Math.sin(x / Math.max(1, width / 8)) * Math.cos(y / Math.max(1, height / 7)));
+    const value = Math.max(0, Math.min(255, brightness + variation));
+    png.data[offset] = value; png.data[offset + 1] = Math.max(0, value - 5); png.data[offset + 2] = Math.min(255, value + 8); png.data[offset + 3] = 255;
+  }
+  return PNG.sync.write(png);
+}
+
 function snapshot(phase: string, mediaAvailable = false) {
   return {
     roomCode: code,
@@ -27,20 +38,30 @@ function snapshot(phase: string, mediaAvailable = false) {
     roundIndex: phase === 'lobby' ? null : 2,
     roundCount: 3,
     connectedParticipantCount: 18,
+    eligibleParticipantCount: 18,
     submittedAnswerCount: phase === 'question_open' ? 12 : 18,
     version: 7,
     choices,
-    revealedEmployee: ['employee_revealed', 'results_displayed'].includes(phase)
+    revealedEmployee: ['employee_revealed', 'results_displayed', 'leaderboard_displayed', 'complete'].includes(phase)
       ? { id: ids.priya, displayName: 'Priya Shah', team: 'Product Design', funFact: 'I once taught a parrot to say stand-up updates.', mediaAvailable }
       : null,
-    results: phase === 'results_displayed'
+    results: ['results_displayed', 'leaderboard_displayed', 'complete'].includes(phase)
       ? { totalAnswers: 18, correctAnswers: 11, choices: [{ employeeId: ids.maya, count: 2 }, { employeeId: ids.jordan, count: 3 }, { employeeId: ids.priya, count: 11 }, { employeeId: ids.mateo, count: 2 }] }
+      : null,
+    leaderboard: ['leaderboard_displayed', 'complete'].includes(phase)
+      ? { isFinal: phase === 'complete', entries: [
+        { rank: 1, displayName: 'Maya Chen', totalScore: 2864, correctAnswers: 3 },
+        { rank: 2, displayName: 'Chris', totalScore: 2750, correctAnswers: 3 },
+        { rank: 3, displayName: 'Chris', totalScore: 1938, correctAnswers: 2 },
+        { rank: 4, displayName: 'Alex Rivera', totalScore: 924, correctAnswers: 1 },
+        { rank: 5, displayName: 'Jordan Brooks', totalScore: 0, correctAnswers: 0 },
+      ] }
       : null,
     updatedAt: '2026-08-11T20:00:00.000Z',
   };
 }
 
-async function mockGame(page: Page, phase: string, options: { mediaAvailable?: boolean; participantAnswer?: string | null } = {}) {
+async function mockGame(page: Page, phase: string, options: { mediaAvailable?: boolean; participantAnswer?: string | null; eligibleParticipantCount?: number; isFinalRound?: boolean } = {}) {
   await page.route('**/api/rooms/**', async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith(`/media/${ids.priya}`)) {
@@ -48,18 +69,24 @@ async function mockGame(page: Page, phase: string, options: { mediaAvailable?: b
       return;
     }
     if (url.pathname.endsWith('/host')) {
-      await route.fulfill({ json: { host: { roomId: ids.room, code, phase, currentRound: phase === 'lobby' ? null : 2, roundCount: 3, isFinalRound: phase !== 'lobby', correctEmployee: phase === 'lobby' ? null : { id: ids.priya, displayName: 'Priya Shah', team: 'Product Design' }, version: 7 } } });
+      await route.fulfill({ json: { host: { roomId: ids.room, code, phase, currentRound: phase === 'lobby' ? null : 2, roundCount: 3, isFinalRound: options.isFinalRound ?? phase !== 'lobby', correctEmployee: phase === 'lobby' ? null : { id: ids.priya, displayName: 'Priya Shah', team: 'Product Design' }, version: 7 } } });
       return;
     }
     if (url.pathname.endsWith('/snapshot')) {
-      await route.fulfill({ json: { snapshot: snapshot(phase, options.mediaAvailable), participant: { playerId: ids.player, answerEmployeeId: options.participantAnswer ?? null } } });
+      await route.fulfill({ json: { snapshot: { ...snapshot(phase, options.mediaAvailable), eligibleParticipantCount: options.eligibleParticipantCount ?? 18 }, participant: {
+        playerId: ids.player,
+        answerEmployeeId: options.participantAnswer ?? null,
+        totalScore: 924,
+        roundFeedback: ['employee_revealed', 'results_displayed'].includes(phase) ? { roundIndex: 2, outcome: options.participantAnswer === ids.priya ? 'correct' : options.participantAnswer ? 'incorrect' : 'no_answer', points: options.participantAnswer === ids.priya ? 924 : 0, streak: options.participantAnswer === ids.priya ? 2 : 0 } : null,
+        standing: ['leaderboard_displayed', 'complete'].includes(phase) ? { rank: 27, totalScore: 924 } : null,
+      } } });
       return;
     }
     if (url.pathname.endsWith('/join')) {
       await route.fulfill({ status: 201, json: { participant: { playerId: ids.player, roomId: ids.room, displayName: 'Alex Rivera' }, participantToken: 'x'.repeat(43) } });
       return;
     }
-    await route.fulfill({ json: { snapshot: snapshot(phase, options.mediaAvailable) } });
+    await route.fulfill({ json: { snapshot: { ...snapshot(phase, options.mediaAvailable), eligibleParticipantCount: options.eligibleParticipantCount ?? 18 } } });
   });
 }
 
@@ -75,7 +102,8 @@ test('participant question is clear and touch-safe at 390x844', async ({ page },
   await mockGame(page, 'question_open');
   await page.goto(`/play/${code}`);
   await expect(page.getByRole('heading', { name: 'Who is this team member?' })).toBeVisible();
-  expect((await page.getByRole('link', { name: 'Name That Team Member' }).boundingBox())?.height).toBeGreaterThanOrEqual(48);
+  await expect(page.getByRole('link', { name: 'Name That Team Member' })).toHaveCount(0);
+  expect((await page.getByLabel('Name That Team Member').boundingBox())?.height).toBeGreaterThanOrEqual(48);
   const answerButtons = page.locator('.choice');
   await expect(answerButtons).toHaveCount(4);
   for (const button of await answerButtons.all()) expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(48);
@@ -89,12 +117,30 @@ test('join flow fits 360x800 and persists a session', async ({ page }, testInfo)
   await page.setViewportSize({ width: 360, height: 800 });
   await mockGame(page, 'lobby');
   await page.goto(`/join/${code}`);
-  expect((await page.getByRole('link', { name: 'Name That Team Member' }).boundingBox())?.height).toBeGreaterThanOrEqual(48);
-  await page.getByLabel('Your display name').fill('Alex Rivera');
+  await expect(page.getByRole('link', { name: 'Name That Team Member' })).toHaveCount(0);
+  expect((await page.getByLabel('Name That Team Member').boundingBox())?.height).toBeGreaterThanOrEqual(48);
+  await page.getByLabel('Display name').fill('Alex Rivera');
   await page.screenshot({ path: testInfo.outputPath('participant-join-360.png'), fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: /Enter game/ }).click();
+  await page.getByRole('button', { name: /I’m ready/ }).click();
   await expect(page).toHaveURL(new RegExp(`/play/${code}$`));
   await expect.poll(() => page.evaluate(() => localStorage.getItem('name-that:participant'))).not.toBeNull();
+});
+
+test('same-path room switch joins the new room without leaving its form mounted', async ({ page }) => {
+  const roomB = 'N8W2Q';
+  await participantSession(page);
+  await mockGame(page, 'lobby');
+  await page.goto(`/play/${code}`);
+  await expect(page.getByText(/Welcome, Alex Rivera/)).toBeVisible();
+  await page.evaluate((next) => {
+    history.pushState({}, '', `/play/${next}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, roomB);
+  await page.getByLabel('Display name').fill('Room B Player');
+  await page.getByRole('button', { name: /ready/i }).click();
+  await expect(page).toHaveURL(new RegExp(`/play/${roomB}$`));
+  await expect(page.getByLabel('Display name')).toHaveCount(0);
+  await expect(page.getByText(/Welcome, Alex Rivera/)).toBeVisible();
 });
 
 test('lobby display renders a decodable room URL at 1920x1080', async ({ page }, testInfo) => {
@@ -127,9 +173,9 @@ test('host sees the private answer and finishes the final round', async ({ page 
   }, { codeValue: code, idValues: ids });
   await mockGame(page, 'results_displayed');
   await page.goto(`/host/${code}`);
-  await expect(page.getByText('Correct answer')).toBeVisible();
+  await expect(page.getByText('Host answer')).toBeVisible();
   await expect(page.getByText('Priya Shah').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Finish game/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Show final leaderboard/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('host-final-round-1440.png'), fullPage: true, animations: 'disabled' });
 });
 
@@ -145,6 +191,47 @@ test('participant submitted and locked states preserve the immutable choice', as
   }
 });
 
+test('a delayed answer response cannot lock the following round', async ({ page }) => {
+  await participantSession(page);
+  let currentRound = 0;
+  let version = 1;
+  let releaseAnswer: (() => void) | undefined;
+  const answerBarrier = new Promise<void>((resolve) => { releaseAnswer = resolve; });
+  await page.route('**/api/rooms/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/answers') && request.method() === 'POST') {
+      expect(request.postDataJSON()).toMatchObject({ playerId: ids.player, roundIndex: 0 });
+      await answerBarrier;
+      await route.fulfill({ json: { answer: { accepted: true, idempotent: false, employeeId: ids.maya } } });
+      return;
+    }
+    if (url.pathname.endsWith('/snapshot')) {
+      await route.fulfill({ json: {
+        snapshot: { ...snapshot('question_open'), roundIndex: currentRound, roundCount: 2, version },
+        participant: { playerId: ids.player, answerEmployeeId: null },
+      } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'Not found.' } } });
+  });
+
+  await page.goto(`/play/${code}`);
+  await expect(page.getByText('Round 1 / 2')).toBeVisible();
+  await page.locator('.choice').first().click();
+  await expect(page.getByText(/Locked in: Maya Chen/)).toBeVisible();
+
+  currentRound = 1;
+  version = 2;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.getByText('Round 2 / 2')).toBeVisible();
+  await expect(page.locator('.choice').first()).toBeEnabled();
+
+  releaseAnswer?.();
+  await expect(page.getByText(/Locked in: Maya Chen/)).toHaveCount(0);
+  await expect(page.locator('.choice').first()).toBeEnabled();
+});
+
 test('participant reveal uses the protected portrait response', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await participantSession(page);
@@ -157,6 +244,107 @@ test('participant reveal uses the protected portrait response', async ({ page },
   await page.screenshot({ path: testInfo.outputPath('participant-reveal-390.png'), fullPage: true, animations: 'disabled' });
 });
 
+test('participant reveal gives celebratory or neutral private scoring feedback without crowding voting', async ({ browser }, testInfo) => {
+  for (const scenario of [
+    { name: 'correct', answer: ids.priya, expected: /You got it!/, detail: /2 correct in a row/ },
+    { name: 'incorrect', answer: ids.maya, expected: /It was Priya Shah/, detail: /get the next one/ },
+    { name: 'no-answer', answer: null, expected: /No answer this round/, detail: /Ready for the next mystery/ },
+  ] as const) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await participantSession(page);
+    await mockGame(page, 'employee_revealed', { participantAnswer: scenario.answer });
+    await page.goto(`/play/${code}`);
+    await expect(page.getByText(scenario.expected)).toBeVisible();
+    await expect(page.getByText(scenario.detail)).toBeVisible();
+    await expect(page.getByText('Score 924')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`participant-${scenario.name}-390.png`), fullPage: true, animations: 'disabled' });
+    await page.close();
+  }
+});
+
+test('participant leaderboard shows personal rank outside the public Top 5', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await participantSession(page);
+  await mockGame(page, 'leaderboard_displayed', { participantAnswer: ids.priya });
+  await page.goto(`/play/${code}`);
+  await expect(page.getByRole('heading', { name: 'You’re #27' })).toBeVisible();
+  await expect(page.getByText('924 points')).toBeVisible();
+  await expect(page.getByText('Maya Chen')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('participant-standing-390.png'), fullPage: true, animations: 'disabled' });
+});
+
+test('shared display renders a duplicate-name Top 5 and final podium without employee photos', async ({ browser }, testInfo) => {
+  for (const [phase, filename, heading] of [
+    ['leaderboard_displayed', 'display-leaderboard-1280.png', 'Leaderboard'],
+    ['complete', 'display-final-podium-1280.png', 'Final podium'],
+  ] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await mockGame(page, phase);
+    await page.goto(`/display/${code}`);
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(page.getByText('Chris', { exact: true })).toHaveCount(2);
+    await expect(page.locator('.leaderboard img')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(filename), fullPage: true, animations: 'disabled' });
+    await page.close();
+  }
+});
+
+test('Results to Leaderboard to Next retains round-indexed preload bytes without duplicate requests', async ({ page }) => {
+  const questionA = '77777777-7777-4777-8777-777777777777';
+  const questionB = '88888888-8888-4888-8888-888888888888';
+  const paths = [
+    `/api/rooms/${code}/mystery-preload?round=0&asset=${questionA}`,
+    `/api/rooms/${code}/reveal-preload?round=0&asset=${questionA}`,
+    `/api/rooms/${code}/mystery-preload?round=1&asset=${questionB}`,
+    `/api/rooms/${code}/reveal-preload?round=1&asset=${questionB}`,
+  ];
+  const requestCounts = new Map(paths.map((path) => [path, 0]));
+  let phase = 'question_open';
+  let roundIndex = 0;
+  let version = 1;
+  await page.route('**/api/rooms/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (requestCounts.has(url.pathname + url.search)) {
+      requestCounts.set(url.pathname + url.search, requestCounts.get(url.pathname + url.search)! + 1);
+      await route.fulfill({ body: rasterFixture(32, 32, url.searchParams.get('round') === '0' ? 40 : 220), contentType: 'image/png' });
+      return;
+    }
+    if (url.pathname.endsWith('/snapshot')) {
+      const preloadAssets = paths.slice(roundIndex === 0 ? 0 : 2).map((path) => {
+        const assetRound = Number(new URL(path, 'http://local').searchParams.get('round'));
+        return { key: `${code}:${assetRound}:${path.includes('reveal') ? 'reveal' : 'mystery'}`, kind: path.includes('reveal') ? 'reveal-encrypted' : 'mystery', roundIndex: assetRound, url: path };
+      });
+      const state = {
+        ...snapshot(phase), phase, roundIndex, roundCount: 2, version, preloadAssets,
+        mysteryImageUrl: `/api/rooms/${code}/mystery`, silhouetteUrl: `/api/rooms/${code}/mystery`,
+        leaderboard: phase === 'leaderboard_displayed' ? snapshot('leaderboard_displayed').leaderboard : null,
+      };
+      await route.fulfill({ json: { snapshot: state } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'Not found.' } } });
+  });
+  await page.goto(`/display/${code}`);
+  const portrait = page.locator('.portrait-chamber.is-concealed img');
+  await expect(portrait).toBeVisible();
+  const roundOneSrc = await portrait.getAttribute('src');
+  expect(roundOneSrc).toMatch(/^blob:/);
+  phase = 'results_displayed'; version = 2;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.display-state-results_displayed')).toBeVisible();
+  phase = 'leaderboard_displayed'; version = 3;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.getByRole('heading', { name: 'Leaderboard' })).toBeVisible();
+  await expect.poll(() => paths.map((path) => requestCounts.get(path)), { timeout: 5_000 }).toEqual([1, 1, 1, 1]);
+  expect(paths.map((path) => requestCounts.get(path))).toEqual([1, 1, 1, 1]);
+  phase = 'question_open'; roundIndex = 1; version = 4;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.display-state-question_open')).toBeVisible();
+  await expect(portrait).toBeVisible();
+  await expect.poll(() => portrait.getAttribute('src')).not.toBe(roundOneSrc);
+  expect(paths.map((path) => requestCounts.get(path))).toEqual([1, 1, 1, 1]);
+});
+
 test('host question control exposes progress, private answer, and guarded next action', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(({ codeValue, idValues }) => {
@@ -165,9 +353,36 @@ test('host question control exposes progress, private answer, and guarded next a
   await mockGame(page, 'question_open');
   await page.goto(`/host/${code}`);
   await expect(page.getByRole('button', { name: /Lock answers/ })).toBeVisible();
-  await expect(page.getByText('Correct answer')).toBeVisible();
-  await expect(page.getByText('12 / 18')).toBeVisible();
+  await expect(page.getByText('Host answer')).toBeVisible();
+  await expect(page.getByText('12/18')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('host-question-1440.png'), fullPage: true, animations: 'disabled' });
+});
+
+test('host Results makes leaderboard optional mid-game and mandatory before the final finish', async ({ browser }) => {
+  for (const [isFinalRound, expectedPrimary] of [[false, /Show leaderboard/], [true, /Show final leaderboard/]] as const) {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.addInitScript(({ codeValue, idValues }) => {
+      localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, token: 'h'.repeat(43) }));
+    }, { codeValue: code, idValues: ids });
+    await mockGame(page, 'results_displayed', { isFinalRound });
+    await page.goto(`/host/${code}`);
+    await expect(page.getByRole('button', { name: expectedPrimary })).toBeVisible();
+    if (isFinalRound) await expect(page.getByRole('button', { name: /^Next round/ })).toHaveCount(0);
+    else await expect(page.getByRole('button', { name: /^Next round/ })).toBeVisible();
+    await page.close();
+  }
+});
+
+test('host complete state retains the final podium beside Play Again', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(({ codeValue, idValues }) => {
+    localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, token: 'h'.repeat(43) }));
+  }, { codeValue: code, idValues: ids });
+  await mockGame(page, 'complete');
+  await page.goto(`/host/${code}`);
+  await expect(page.getByRole('heading', { name: 'Final podium' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Play again/ })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('host-complete-podium-1440.png'), fullPage: true, animations: 'disabled' });
 });
 
 test('host refresh preserves its session across a transient verification failure', async ({ page }, testInfo) => {
@@ -238,7 +453,7 @@ test('definitive host authorization rejection clears the unusable session', asyn
     await route.fulfill({ json: { snapshot: snapshot('question_open') } });
   });
   await page.goto(`/host/${code}`);
-  await expect(page.getByRole('heading', { name: 'Bring your team together.' })).toBeVisible();
+  await expect(page).toHaveURL(/\/host$/);
   expect(await page.evaluate(() => localStorage.getItem('name-that:host'))).toBeNull();
 });
 
@@ -247,6 +462,7 @@ test('display question, locked, and portrait reveal states fit 1280x720', async 
     ['question_open', 'display-question-1280.png'],
     ['answers_locked', 'display-locked-1280.png'],
     ['employee_revealed', 'display-reveal-portrait-1280.png'],
+    ['complete', 'display-complete-1280.png'],
   ] as const) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await mockGame(page, phase, { mediaAvailable: phase === 'employee_revealed' });
@@ -260,4 +476,164 @@ test('display question, locked, and portrait reveal states fit 1280x720', async 
     await page.screenshot({ path: testInfo.outputPath(filename), fullPage: true, animations: 'disabled' });
     await page.close();
   }
+});
+
+test('saved game library reads as a game collection and hosts with an idempotent operation', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  let sessionBody: { hostToken?: string; idempotencyKey?: string } | null = null;
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/sessions')) {
+      sessionBody = route.request().postDataJSON() as { hostToken?: string; idempotencyKey?: string };
+      await route.fulfill({ json: { room: { roomId: ids.room, code, gameId: 'game-1', gameRevision: 3, gameName: 'Summer Team Ice Breaker' }, hostToken: sessionBody.hostToken } });
+      return;
+    }
+    if (url.pathname.endsWith('/host')) { await route.fulfill({ json: { host: { roomId: ids.room, code, phase: 'lobby', currentRound: null, roundCount: 5, isFinalRound: false, correctEmployee: null, version: 1, gameId: 'game-1', gameName: 'Summer Team Ice Breaker' } } }); return; }
+    if (url.pathname.endsWith('/snapshot')) { await route.fulfill({ json: { snapshot: { ...snapshot('lobby'), roundCount: 5 } } }); return; }
+    await route.fulfill({ json: { games: [{ id: 'game-1', name: 'Summer Team Ice Breaker', revision: 3, questionCount: 5, updatedAt: '2026-08-11T20:00:00Z' }] } });
+  });
+  await page.goto('/host');
+  await expect(page.getByRole('heading', { name: 'Pick the next mystery.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Summer Team Ice Breaker' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('game-library-1440.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: /Host now/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/host/${code}$`));
+  expect(sessionBody).not.toBeNull();
+  expect(sessionBody!.hostToken).toHaveLength(43);
+  expect(sessionBody!.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+});
+
+test('editor persists separate Mystery and Reveal images plus optional Fun Fact', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  const requests: string[] = [];
+  let uploadedMultipart = '';
+  await page.route('**/api/**', async (route) => {
+    const request = route.request(); const url = new URL(request.url()); requests.push(`${request.method()} ${url.pathname}`);
+    if (url.pathname.endsWith('/media')) { uploadedMultipart = request.postDataBuffer()?.toString('latin1') ?? ''; await route.fulfill({ json: { media: { id: 'media-1', mysteryMimeType: 'image/png', revealMimeType: 'image/png', mysteryPreviewUrl: '/api/games/game-1/media/media-1?role=mystery', revealPreviewUrl: '/api/games/game-1/media/media-1?role=reveal' } } }); return; }
+    if (request.method() === 'POST' && url.pathname === '/api/games') { await route.fulfill({ json: { game: { id: 'game-1', name: 'Summer Team Ice Breaker', revision: 1, questions: [] } } }); return; }
+    if (request.method() === 'PUT') {
+      const body = request.postDataJSON() as { name: string; questions: Array<Record<string, unknown>> };
+      await route.fulfill({ json: { game: { id: 'game-1', name: body.name, revision: 2, questions: body.questions } } }); return;
+    }
+    await route.fulfill({ json: { games: [] } });
+  });
+  await page.goto('/host/games/new');
+  await page.getByLabel('Game name').fill('Summer Team Ice Breaker');
+  await page.getByLabel('Employee / reveal name').fill('Priya Shah');
+  await page.getByLabel('Fun Fact (optional)').fill('Has visited 17 countries.');
+  await page.getByRole('textbox', { name: 'Answer 1' }).fill('Priya Shah');
+  await page.getByRole('textbox', { name: 'Answer 2' }).fill('Maya Chen');
+  await page.getByRole('button', { name: /Add answer/ }).click();
+  await page.getByRole('textbox', { name: 'Answer 3' }).fill('Jordan Brooks');
+  await page.getByLabel('Mystery Image').setInputFiles(resolve('content/portraits/maya-chen.webp'));
+  await page.getByLabel('Reveal Image').setInputFiles(resolve('content/portraits/priya-shah.webp'));
+  await expect(page.getByRole('img', { name: 'Mystery Image preview' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Reveal Image preview' })).toBeVisible();
+  await page.getByRole('button', { name: 'Reveal', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Portrait of Priya Shah' })).toBeVisible();
+  await expect(page.locator('.preview-fun-fact')).toHaveText('Has visited 17 countries.');
+  await page.screenshot({ path: testInfo.outputPath('game-editor-1600.png'), fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: /Save game/ }).click();
+  await expect.poll(() => requests.join('|')).toContain('PUT /api/games/game-1');
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  expect(requests).toEqual(expect.arrayContaining(['POST /api/games', 'POST /api/games/game-1/media', 'PUT /api/games/game-1']));
+  expect(uploadedMultipart).toContain('name="mystery"');
+  expect(uploadedMultipart).toContain('name="reveal"');
+  expect(uploadedMultipart).toContain('filename="priya-shah-normalized.png"');
+  expect(uploadedMultipart).toContain('Content-Type: image/png');
+  expect(uploadedMultipart).not.toContain('name="silhouette"');
+});
+
+test('late joiners do not depress current-round answer progress', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await mockGame(page, 'question_open', { eligibleParticipantCount: 12 });
+  await page.goto(`/display/${code}`);
+  await expect(page.getByText('12 / 12')).toBeVisible();
+  await expect(page.getByText(/eligible answers locked in/i)).toBeVisible();
+});
+
+test('editor previews host-authored mystery and reveal files without transforming either', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  await page.goto('/host/games/new');
+  const mystery = rasterFixture(640, 320, 35);
+  const reveal = rasterFixture(320, 640, 225);
+  await page.getByLabel('Mystery Image').setInputFiles({ name: 'mystery.png', mimeType: 'image/png', buffer: mystery });
+  await page.getByLabel('Reveal Image').setInputFiles({ name: 'reveal.png', mimeType: 'image/png', buffer: reveal });
+  await expect(page.getByRole('img', { name: 'Mystery Image preview' })).toBeVisible();
+  await page.getByRole('button', { name: 'Mystery', exact: true }).click();
+  const mysteryPixels = PNG.sync.read(await page.locator('.preview-stage .chamber-photo img').screenshot()).data;
+  await page.getByRole('button', { name: 'Reveal', exact: true }).click();
+  const revealPixels = PNG.sync.read(await page.locator('.preview-stage .chamber-photo img').screenshot()).data;
+  expect(Buffer.compare(mysteryPixels, revealPixels)).not.toBe(0);
+});
+
+test('reveal is immediate and never opens a routine confirmation dialog', async ({ page }) => {
+  await page.addInitScript(({ codeValue, idValues }) => localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, token: 'h'.repeat(43) })), { codeValue: code, idValues: ids });
+  await mockGame(page, 'answers_locked');
+  let dialogs = 0; page.on('dialog', async (dialog) => { dialogs += 1; await dialog.dismiss(); });
+  await page.goto(`/host/${code}`);
+  await page.getByRole('button', { name: /Reveal teammate/ }).click();
+  expect(dialogs).toBe(0);
+});
+
+test('play again retries with the same host token and idempotency key', async ({ page }) => {
+  await page.addInitScript(({ codeValue, idValues }) => localStorage.setItem('name-that:host', JSON.stringify({ code: codeValue, roomId: idValues.room, gameId: 'game-1', gameName: 'Summer Team Ice Breaker', token: 'h'.repeat(43) })), { codeValue: code, idValues: ids });
+  const bodies: Array<{ hostToken: string; idempotencyKey: string }> = [];
+  await page.route('**/api/rooms/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/host')) { const replayed=url.pathname.includes('N8W2Q');await route.fulfill({ json: { host: { roomId: replayed?'new-room':ids.room, code: replayed?'N8W2Q':code, phase: replayed?'lobby':'complete', currentRound: replayed?null:2, roundCount: 3, isFinalRound: !replayed, correctEmployee: null, version: 9, gameId: 'game-1', gameName: 'Summer Team Ice Breaker' } } }); return; }
+    if (url.pathname.endsWith('/snapshot')) { await route.fulfill({ json: { snapshot: snapshot(url.pathname.includes('N8W2Q')?'lobby':'complete') } }); return; }
+    if (url.pathname.endsWith('/play-again')) {
+      bodies.push(route.request().postDataJSON() as { hostToken: string; idempotencyKey: string });
+      if (bodies.length === 1) { await route.fulfill({ status: 500, json: { error: { code: 'TEMPORARY_FAILURE', message: 'Try again.' } } }); return; }
+      await route.fulfill({ json: { room: { roomId: 'new-room', code: 'N8W2Q', gameId: 'game-1', gameRevision: 3, gameName: 'Summer Team Ice Breaker' }, hostToken: bodies[1]?.hostToken } }); return;
+    }
+    await route.fulfill({ json: {} });
+  });
+  await page.goto(`/host/${code}`);
+  await page.getByRole('button', { name: /Play again/ }).click();
+  await expect(page.getByText('Try again.')).toBeVisible();
+  await page.getByRole('button', { name: /Play again/ }).click();
+  await expect(page).toHaveURL(/\/host\/N8W2Q$/);
+  await expect(page.getByRole('button', { name: /Start round/ })).toBeEnabled();
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toEqual(bodies[0]);
+});
+
+test('same-tab room transition discards a delayed old-room snapshot and terminates loading', async ({ page }) => {
+  const roomB = 'N8W2Q';
+  let releaseOld: (() => void) | undefined;
+  await page.route('**/api/rooms/**/snapshot', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.includes(code)) await new Promise<void>((resolvePromise) => { releaseOld = resolvePromise; });
+    const roomCode = path.includes(roomB) ? roomB : code;
+    await route.fulfill({ json: { snapshot: { ...snapshot('lobby'), roomCode } } });
+  });
+  await page.goto(`/display/${code}`);
+  await expect.poll(() => Boolean(releaseOld)).toBe(true);
+  await page.evaluate((next) => { history.pushState({}, '', `/display/${next}`); window.dispatchEvent(new PopStateEvent('popstate')); }, roomB);
+  await expect(page.getByText(roomB, { exact: true })).toBeVisible();
+  releaseOld?.();
+  await page.waitForTimeout(150);
+  await expect(page.getByText(roomB, { exact: true })).toBeVisible();
+  await expect(page.getByText(code, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Loading the next scene/i)).toHaveCount(0);
+});
+
+test('editor never creates horizontal document overflow while content grows and shrinks', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.addInitScript(() => localStorage.setItem('name-that:admin', JSON.stringify({ id: 'admin-1', token: 'a'.repeat(43) })));
+  await page.goto('/host/games/new');
+  const measure = () => page.evaluate(() => ({ width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }));
+  for (let index = 0; index < 8; index += 1) await page.getByRole('button', { name: /Add question/ }).click();
+  expect((await measure()).scrollWidth).toBeLessThanOrEqual((await measure()).width);
+  for (let index = 0; index < 8; index += 1) await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  for (let index = 0; index < 8; index += 1) await page.getByRole('button', { name: /Add answer/ }).click();
+  const expanded = await measure();
+  expect(expanded.scrollWidth).toBeLessThanOrEqual(expanded.width);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight)).toBe(true);
 });

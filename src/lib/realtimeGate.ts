@@ -17,4 +17,22 @@ export class RealtimeInvalidationGate {
     this.trailingQueued = false;
     this.nextAllowedAt = now + 1_000;
   }
+
+  reset(): void {
+    this.trailingQueued = false;
+    this.nextAllowedAt = 0;
+  }
+}
+
+export function isPriorityPhaseInvalidation(
+  version: unknown,
+  authoritativeVersion: number,
+  phase: unknown,
+  authoritativePhase: string | null,
+): boolean {
+  return typeof version === 'number'
+    && Number.isInteger(version)
+    && version > authoritativeVersion
+    && typeof phase === 'string'
+    && phase !== authoritativePhase;
 }

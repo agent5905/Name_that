@@ -1,0 +1,491 @@
+{
+  "schemaVersion": 1,
+  "runId": "3a193e1c",
+  "startedAt": "2026-08-13T22:37:32.329Z",
+  "finishedAt": "2026-08-13T22:37:59.934Z",
+  "environment": {
+    "origin": "https://name-that-team-member.pages.dev",
+    "hostname": "name-that-team-member.pages.dev",
+    "gameId": "92e6d9a6-1932-4829-9909-9d0a72fcd052",
+    "operatorRecordedGitCommit": "85ca77310d8f11937c730dbe76d104dec9fe1422",
+    "operatorRecordedDeploymentId": "db24839d-aff2-41a6-9a98-f94da7fb4fdc",
+    "deploymentIdentityVerification": "Operator supplied; correlate both values with the Cloudflare deployment dashboard before accepting the report."
+  },
+  "configuration": {
+    "execute": true,
+    "browserObservers": false,
+    "help": false,
+    "participants": 5,
+    "rounds": 3,
+    "joinWindowMs": 2000,
+    "participantPollMs": 60000,
+    "reconnectPercent": 10,
+    "latePercent": 5,
+    "lateJoinWindowMs": 5000,
+    "reconnectOutageMs": 3000,
+    "duplicatePercent": 10,
+    "transitionTimeoutMs": 15000,
+    "answerWindowMs": 5000,
+    "output": "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\5-client.json"
+  },
+  "estimate": {
+    "participants": 5,
+    "rounds": 3,
+    "estimatedDurationSeconds": 28,
+    "pagesFunctionRequests": {
+      "sessionCreate": 1,
+      "realtimeCredential": 5,
+      "joins": 5,
+      "initialAndSubscribeSnapshots": "between 5 and 10; concurrent recovery fetches are coalesced",
+      "periodicSnapshots": 3,
+      "answers": 15,
+      "duplicateAnswerProbes": 6,
+      "duplicateJoinRetries": 1,
+      "roomFullBoundaryProbe": 0,
+      "samePhaseInvalidationSnapshots": 0,
+      "personalizedRevealSnapshots": 15,
+      "personalizedLeaderboardSnapshots": 10,
+      "externalHostAndDisplaySafetyPollsNotGenerated": "approximately 28 at the target 2-second role interval"
+    },
+    "supabaseRequests": {
+      "hostPhaseRpcCalls": "14 before an optional end action when all saved-game rounds are exercised",
+      "exactRoomCleanup": 5
+    },
+    "realtime": {
+      "websocketConnections": 5,
+      "privateChannels": 5,
+      "browserObserverConnections": 0,
+      "phaseBroadcastDeliveriesBeforeOptionalEnd": 69,
+      "optionalEndBroadcastDeliveries": 5,
+      "samePhaseJoinAndAnswerDeliveries": 0,
+      "baselineBeforeSuppression": "approximately 90 join/answer deliveries if the previous every-snapshot fan-out were retained"
+    },
+    "reconnectClients": 1,
+    "answerLockRaceClients": 1,
+    "lateJoinClients": 1,
+    "imageRequests": 0,
+    "note": "This is a protocol-capacity estimate. Late clients miss the initial start transition, and the optional end broadcast occurs only when every saved-game round is exercised. It deliberately does not download Mystery/Reveal assets or static application bundles."
+  },
+  "results": {
+    "attemptedParticipants": 5,
+    "joins": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "idempotentRetries": 1,
+      "retryFailures": 0
+    },
+    "activeRealtimeConnectionsAtPeak": 5,
+    "realtime": {
+      "subscribed": 0,
+      "peakSubscribed": 5,
+      "inboundEvents": 69,
+      "samePhaseEvents": 0,
+      "samePhaseSamples": [],
+      "invalidEvents": 0,
+      "channelErrors": 0,
+      "maxChannelsPerClient": 1
+    },
+    "answers": {
+      "logicalAttempted": 15,
+      "httpAttempted": 22,
+      "successful": 15,
+      "closedAtLock": 0,
+      "failed": 0,
+      "idempotentDuplicates": 3,
+      "immutableDuplicates": 3,
+      "duplicateProbeFailures": 0,
+      "acceptedByRound": {
+        "0": 5,
+        "1": 5,
+        "2": 5
+      }
+    },
+    "joinLatency": {
+      "count": 5,
+      "averageMs": 140.5,
+      "p50Ms": 138.7,
+      "p95Ms": 166.7,
+      "maxMs": 166.7
+    },
+    "participantReadyLatency": {
+      "count": 5,
+      "averageMs": 459.7,
+      "p50Ms": 421.1,
+      "p95Ms": 618.2,
+      "maxMs": 618.2
+    },
+    "answerLatency": {
+      "count": 15,
+      "averageMs": 157.8,
+      "p50Ms": 148.9,
+      "p95Ms": 244.8,
+      "maxMs": 244.8
+    },
+    "personalHydrationLatency": {
+      "count": 16,
+      "averageMs": 273.3,
+      "p50Ms": 254.8,
+      "p95Ms": 372.8,
+      "maxMs": 372.8
+    },
+    "scoring": {
+      "rounds": [
+        {
+          "roundIndex": 0,
+          "acceptedAnswers": 5,
+          "expectedPoints": 3769,
+          "actualPoints": 3769
+        },
+        {
+          "roundIndex": 1,
+          "acceptedAnswers": 5,
+          "expectedPoints": 998,
+          "actualPoints": 998
+        }
+      ],
+      "ledgerRows": 10,
+      "expectedTotalPoints": 4767,
+      "actualTotalPoints": 4767,
+      "mismatches": 0
+    },
+    "leaderboard": {
+      "checks": [
+        {
+          "roundIndex": 0,
+          "isFinal": false,
+          "entries": [
+            {
+              "rank": 1,
+              "displayName": "Capacity 3a193e1c Chris",
+              "totalScore": 990,
+              "correctAnswers": 1
+            },
+            {
+              "rank": 2,
+              "displayName": "Capacity 3a193e1c Chris",
+              "totalScore": 970,
+              "correctAnswers": 1
+            },
+            {
+              "rank": 3,
+              "displayName": "Capacity 3a193e1c 004",
+              "totalScore": 928,
+              "correctAnswers": 1
+            },
+            {
+              "rank": 4,
+              "displayName": "Capacity 3a193e1c 005",
+              "totalScore": 881,
+              "correctAnswers": 1
+            },
+            {
+              "rank": 5,
+              "displayName": "Capacity 3a193e1c 003",
+              "totalScore": 0,
+              "correctAnswers": 0
+            }
+          ]
+        }
+      ],
+      "personalRankChecks": 5,
+      "mismatches": 1
+    },
+    "transitions": [
+      {
+        "action": "start",
+        "phase": "question_open",
+        "roundIndex": 0,
+        "delivered": 4,
+        "missed": 0,
+        "count": 4,
+        "averageMs": 179.6,
+        "p50Ms": 178.8,
+        "p95Ms": 180.5,
+        "maxMs": 180.5,
+        "sourceCounts": {
+          "realtime-push": 4
+        }
+      },
+      {
+        "action": "lock",
+        "phase": "answers_locked",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 243.7,
+        "p50Ms": 243.7,
+        "p95Ms": 243.8,
+        "maxMs": 243.8,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "reveal",
+        "phase": "employee_revealed",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 244.3,
+        "p50Ms": 244.1,
+        "p95Ms": 246,
+        "maxMs": 246,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "show_results",
+        "phase": "results_displayed",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 120.8,
+        "p50Ms": 121.1,
+        "p95Ms": 121.4,
+        "maxMs": 121.4,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "answerTotals": [
+          5
+        ]
+      },
+      {
+        "action": "show_leaderboard",
+        "phase": "leaderboard_displayed",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 122.7,
+        "p50Ms": 122.9,
+        "p95Ms": 123.3,
+        "maxMs": 123.3,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "next_round",
+        "phase": "question_open",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 113.2,
+        "p50Ms": 112.2,
+        "p95Ms": 115.9,
+        "maxMs": 115.9,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "lock",
+        "phase": "answers_locked",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 169.1,
+        "p50Ms": 169,
+        "p95Ms": 171.5,
+        "maxMs": 171.5,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "reveal",
+        "phase": "employee_revealed",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 115.6,
+        "p50Ms": 114.9,
+        "p95Ms": 121.1,
+        "maxMs": 121.1,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "show_results",
+        "phase": "results_displayed",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 116.9,
+        "p50Ms": 117.5,
+        "p95Ms": 118.3,
+        "maxMs": 118.3,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "answerTotals": [
+          5
+        ]
+      },
+      {
+        "action": "next_round",
+        "phase": "question_open",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 113.7,
+        "p50Ms": 113.4,
+        "p95Ms": 115.7,
+        "maxMs": 115.7,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "lock",
+        "phase": "answers_locked",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 137.4,
+        "p50Ms": 137.4,
+        "p95Ms": 138.4,
+        "maxMs": 138.4,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "reveal",
+        "phase": "employee_revealed",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 122.7,
+        "p50Ms": 122.9,
+        "p95Ms": 124.5,
+        "maxMs": 124.5,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      },
+      {
+        "action": "show_results",
+        "phase": "results_displayed",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 108.4,
+        "p50Ms": 106.2,
+        "p95Ms": 113.9,
+        "maxMs": 113.9,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "answerTotals": [
+          5
+        ]
+      },
+      {
+        "action": "show_leaderboard",
+        "phase": "leaderboard_displayed",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 134.6,
+        "p50Ms": 134.7,
+        "p95Ms": 135,
+        "maxMs": 135,
+        "sourceCounts": {
+          "realtime-push": 5
+        }
+      }
+    ],
+    "reconnect": {
+      "attempted": 1,
+      "successful": 1,
+      "failed": 0,
+      "identityRecovered": 1,
+      "idempotentResubmits": 1
+    },
+    "capacityBoundary": {
+      "attempted": 0,
+      "rejectedRoomFull": 0,
+      "failed": 0
+    },
+    "answerLockRace": [
+      {
+        "roundIndex": 0,
+        "clients": 1,
+        "accepted": 1,
+        "answersClosed": 0,
+        "unexpected": 0,
+        "lockTransitionLatencyMs": 273.6
+      }
+    ],
+    "snapshots": {
+      "successful": 26,
+      "failed": 7
+    },
+    "httpRequests": {
+      "total": 101,
+      "pagesFunctions": 68,
+      "supabaseClientHttp": 14,
+      "supabaseHostRest": 14,
+      "cleanup": 5
+    },
+    "approximateRealtimeEventVolume": 69,
+    "errorsByCategory": {
+      "INTERNAL_ERROR": 7,
+      "SNAPSHOT_FAILED": 7
+    },
+    "durationMs": 27605,
+    "loadGenerator": {
+      "peakRssBytes": 87322624,
+      "peakHeapUsedBytes": 17552480,
+      "eventLoopDelay": {
+        "meanMs": 30.8,
+        "p95Ms": 32,
+        "maxMs": 35.7
+      },
+      "cpu": {
+        "userMs": 63,
+        "systemMs": 31,
+        "singleCoreUtilizationPercent": 0.3
+      },
+      "thresholds": {
+        "eventLoopP95Ms": 100,
+        "eventLoopMaxMs": 1000,
+        "peakRssBytes": 1610612736
+      },
+      "healthy": true
+    },
+    "browserObservers": {
+      "enabled": false
+    },
+    "cleanup": {
+      "passed": true,
+      "roomDeleted": true
+    }
+  },
+  "exclusions": [
+    "No static frontend bundles or Mystery/Reveal image bytes are downloaded.",
+    "Each simulated browser fetches the public Realtime credential once; no Supabase Auth users are created.",
+    "A real host browser and shared display are outside this protocol harness and must be run separately for the final rehearsal.",
+    "Duplicate join operations and concurrent duplicate answers are covered here; duplicate-tab UI/socket behavior is covered by the real-browser gauntlet.",
+    "Platform dashboard metrics are not inferred; correlate this report with Supabase and Cloudflare dashboards."
+  ],
+  "pass": false,
+  "failure": "Capacity scoring fixture did not prove deterministic zero-score tie ordering."
+}

@@ -31,12 +31,28 @@ const managementQuery = async (query) => {
   if (!response.ok) throw new Error(`Supabase management query failed (${response.status}).`);
   return response.json();
 };
-const managementAuthConfig = async () => {
-  const response = await fetch(`https://api.supabase.com/v1/projects/${encodeURIComponent(projectRef)}/config/auth`, {
-    headers: { authorization: `Bearer ${managementToken}` },
-  });
-  if (!response.ok) throw new Error(`Supabase Auth config read failed (${response.status}).`);
-  return response.json();
+const legacyAnonJwt = async () => {
+  let key = process.env.SUPABASE_REALTIME_ANON_KEY;
+  if (!key) {
+    const response = await fetch(`https://api.supabase.com/v1/projects/${encodeURIComponent(projectRef)}/api-keys?reveal=true`, {
+      headers: { authorization: `Bearer ${managementToken}` },
+    });
+    if (!response.ok) throw new Error(`Supabase API key read failed (${response.status}).`);
+    const keys = await response.json();
+    key = Array.isArray(keys) ? keys.find((candidate) => candidate?.name === 'anon')?.api_key : undefined;
+  }
+  if (typeof key !== 'string' || key.split('.').length !== 3) {
+    throw new Error('The project must retain a legacy anon JWT for private Realtime authorization.');
+  }
+  return key;
+};
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const waitFor = async (predicate, message, timeoutMilliseconds = 10_000) => {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await delay(25);
+  }
 };
 
 const hostToken = token();
@@ -48,8 +64,6 @@ let rateSourceHash;
 let roomChannel;
 let forgedObserverChannel;
 let forgedObserver;
-let realtimeAuthUserId;
-let authCleanupError;
 const cleanupErrors = [];
 const inspectRoundSequence = async (roomId) => {
   const rounds = await admin.from('rounds').select('id,round_number,correct_employee_id').eq('room_id', roomId).order('round_number');
@@ -65,9 +79,6 @@ const inspectRoundSequence = async (roomId) => {
   return rounds.data.map((round) => round.correct_employee_id).join(',');
 };
 try {
-  const authConfig = await managementAuthConfig();
-  assert.equal(authConfig.external_anonymous_users_enabled, true, 'Anonymous Auth must be enabled for private Realtime');
-  assert(authConfig.rate_limit_anonymous_users >= 120, 'Anonymous Auth limit must support 100 participants behind one NAT');
   const created = await rpc('create_room', { p_code: roomCode, p_host_token_hash: await hash(hostToken) });
   const roomId = created.roomId;
   cleanupRooms.push({ roomId, roomCode });
@@ -144,51 +155,45 @@ try {
   const joinLoadPlayer = async (index) => admin.rpc('join_room', {
     p_code: capCode, p_display_name: `Load ${index + 1}`, p_participant_token_hash: await hash(token()),
   });
-  for (let start = 0; start < 99; start += 10) {
-    const batch = await Promise.all(Array.from({ length: Math.min(10, 99 - start) }, (_, offset) => joinLoadPlayer(start + offset)));
+  for (let start = 0; start < 224; start += 25) {
+    const batch = await Promise.all(Array.from({ length: Math.min(25, 224 - start) }, (_, offset) => joinLoadPlayer(start + offset)));
     assert(batch.every((result) => !result.error), 'prefill joins should succeed below the cap');
   }
-  const boundaryRace = await Promise.all([joinLoadPlayer(99), joinLoadPlayer(100)]);
+  const boundaryRace = await Promise.all([joinLoadPlayer(224), joinLoadPlayer(225)]);
   assert.equal(boundaryRace.filter((result) => !result.error).length, 1);
   assert.equal(boundaryRace.filter((result) => result.error?.message.includes('ROOM_FULL')).length, 1);
   const cappedCount = await admin.from('players').select('*', { count: 'exact', head: true }).eq('room_id', capRoom.roomId);
-  assert.equal(cappedCount.count, 100, 'concurrent joins must never exceed the transactional cap');
+  assert.equal(cappedCount.count, 225, 'concurrent joins must never exceed the transactional cap');
 
   const storedRoom = await admin.from('rooms').select('host_token_hash').eq('id', roomId).single();
   assert(!storedRoom.error);
   assert.notEqual(storedRoom.data.host_token_hash, hostToken, 'plaintext host token must not be persisted');
 
-  const realtimeSignIn = await anon.auth.signInAnonymously({
-    options: { data: { application: 'name-that-realtime' } },
-  });
-  if (realtimeSignIn.error || !realtimeSignIn.data.session || !realtimeSignIn.data.user) {
-    throw new Error(`Anonymous Auth is required for private Realtime: ${realtimeSignIn.error?.message ?? 'session missing'}`);
-  }
-  realtimeAuthUserId = realtimeSignIn.data.user.id;
-  await anon.realtime.setAuth(realtimeSignIn.data.session.access_token);
-  const authenticatedSnapshotEnumeration = await anon.from('room_snapshots').select('*');
-  assert(authenticatedSnapshotEnumeration.error, 'authenticated Realtime identity must not enumerate snapshots');
-  const authenticatedPrivateRpc = await anon.rpc('host_action', {
+  const realtimeJwt = await legacyAnonJwt();
+  await anon.realtime.setAuth(realtimeJwt);
+  const realtimeRestClient = createClient(url, realtimeJwt, { auth: { persistSession: false, autoRefreshToken: false } });
+  const realtimeSnapshotEnumeration = await realtimeRestClient.from('room_snapshots').select('*');
+  assert(realtimeSnapshotEnumeration.error, 'Realtime anon JWT must not enumerate snapshots');
+  const realtimePrivateRpc = await realtimeRestClient.rpc('host_action', {
     p_code: roomCode, p_host_token_hash: await hash(token()), p_action: 'start',
   });
-  assert(authenticatedPrivateRpc.error, 'authenticated Realtime identity must not execute game RPCs');
-  let resolveBroadcast;
-  let rejectBroadcast;
-  const broadcastReceived = new Promise((resolve, reject) => {
-    resolveBroadcast = resolve;
-    rejectBroadcast = reject;
-  });
-  roomChannel = anon.channel(`room:${roomCode}`, { config: { private: true, broadcast: { ack: true } } })
-    .on('broadcast', { event: 'room_snapshot_changed' }, ({ payload }) => resolveBroadcast(payload));
-  await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Private room Broadcast subscription timed out.')), 10_000);
-    roomChannel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') { clearTimeout(timeout); resolve(); }
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { clearTimeout(timeout); reject(new Error(`Private room Broadcast failed: ${status}`)); }
+  assert(realtimePrivateRpc.error, 'Realtime anon JWT must not execute game RPCs');
+  const broadcasts = [];
+  const subscribeRoom = async () => {
+    const channel = anon.channel(`room:${roomCode}`, { config: { private: true, broadcast: { ack: true } } })
+      .on('broadcast', { event: 'room_snapshot_changed' }, ({ payload }) => broadcasts.push(payload));
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Private room Broadcast subscription timed out.')), 10_000);
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') { clearTimeout(timeout); resolve(); }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { clearTimeout(timeout); reject(new Error(`Private room Broadcast failed: ${status}`)); }
+      });
     });
-  });
+    return channel;
+  };
+  roomChannel = await subscribeRoom();
   forgedObserver = createClient(url, required('VITE_SUPABASE_PUBLISHABLE_KEY'), { auth: { persistSession: false, autoRefreshToken: false } });
-  await forgedObserver.realtime.setAuth(realtimeSignIn.data.session.access_token);
+  await forgedObserver.realtime.setAuth(realtimeJwt);
   let forgedDelivered = false;
   forgedObserverChannel = forgedObserver.channel(`room:${roomCode}`, { config: { private: true } })
     .on('broadcast', { event: 'forged_room_update' }, () => { forgedDelivered = true; });
@@ -207,21 +212,47 @@ try {
   forgedObserverChannel = undefined;
   forgedObserver = undefined;
 
-  const player = await rpc('join_room', {
+  const joinOperationId = crypto.randomUUID();
+  const playerJoinArgs = {
     p_code: roomCode, p_display_name: 'Ada', p_participant_token_hash: await hash(participantToken),
-  });
-  const broadcastTimeout = setTimeout(() => rejectBroadcast(new Error('Database room invalidation was not received.')), 10_000);
-  const invalidation = await broadcastReceived;
-  clearTimeout(broadcastTimeout);
-  assert.equal(invalidation.roomCode, roomCode);
-  assert(Number.isInteger(invalidation.version));
-  await anon.removeChannel(roomChannel);
-  roomChannel = undefined;
+    p_join_operation_id: joinOperationId,
+  };
+  const player = await rpc('join_room', playerJoinArgs);
+  const playerRetry = await rpc('join_room', playerJoinArgs);
+  assert.deepEqual(playerRetry, player, 'an exact join retry must recover the original participant identity');
+  await expectMarker('join_room', {
+    ...playerJoinArgs, p_participant_token_hash: await hash(token()),
+  }, 'IDEMPOTENCY_CONFLICT');
   const second = await rpc('join_room', {
     p_code: roomCode, p_display_name: 'Grace', p_participant_token_hash: await hash(secondToken),
+    p_join_operation_id: crypto.randomUUID(),
   });
+  await delay(750);
+  assert.equal(broadcasts.length, 0, 'same-phase joins must not fan out audience broadcasts');
   await expectMarker('host_action', { p_code: roomCode, p_host_token_hash: await hash(token()), p_action: 'start' }, 'HOST_UNAUTHORIZED');
-  await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'start' });
+  const beforeDirect = await admin.from('rooms').select('phase,version').eq('id', roomId).single();
+  assert(!beforeDirect.error);
+  for (const args of [
+    { p_code: roomCode, p_host_token: null, p_action: 'start' },
+    { p_code: roomCode, p_action: 'start' },
+    { p_code: roomCode, p_host_token: token(), p_action: 'start' },
+    { p_code: roomCode, p_host_token: hostToken, p_action: 'unknown' },
+  ]) {
+    const rejected = await anon.rpc('host_action_direct', args);
+    assert(rejected.error, `direct host action must reject ${JSON.stringify(args)}`);
+  }
+  const afterRejectedDirect = await admin.from('rooms').select('phase,version').eq('id', roomId).single();
+  assert(!afterRejectedDirect.error);
+  assert.deepEqual(afterRejectedDirect.data, beforeDirect.data, 'rejected direct credentials must not mutate phase or version');
+  const directStart = await anon.rpc('host_action_direct', { p_code: roomCode, p_host_token: hostToken, p_action: 'start' });
+  assert(!directStart.error, `valid direct host capability failed: ${directStart.error?.message}`);
+  await waitFor(() => broadcasts.length >= 1, 'The question-open phase push was not received.');
+  await delay(500);
+  assert.equal(broadcasts.length, 1, 'a phase transition must produce exactly one audience push');
+  assert.equal(broadcasts[0].roomCode, roomCode);
+  assert.equal(broadcasts[0].phase, 'question_open');
+  assert.equal(broadcasts[0].snapshot?.phase, 'question_open');
+  assert(Number.isInteger(broadcasts[0].version));
 
   const hostView = await rpc('host_room', { p_code: roomCode, p_host_token_hash: await hash(hostToken) });
   assert(hostView.correctEmployee?.id, 'authenticated host should receive the current correct employee');
@@ -234,53 +265,93 @@ try {
   assert.equal(snapshot.data.revealed_employee, null, 'identity must be hidden before reveal');
   assert.equal(snapshot.data.results, null, 'results must be hidden before results phase');
   assert(!Object.hasOwn(snapshot.data, 'correctEmployee'), 'public snapshot must not gain the host-only correct marker');
-  const choiceId = snapshot.data.choices[0].id;
+  const choiceId = hostView.correctEmployee.id;
 
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId, p_expected_round: 0,
   }, 'PARTICIPANT_UNAUTHORIZED');
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
   }, 'PARTICIPANT_UNAUTHORIZED');
 
   const first = await rpc('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
   });
   assert.equal(first.idempotent, false);
+  assert(!Object.hasOwn(first, 'points') && !Object.hasOwn(first, 'isCorrect') && !Object.hasOwn(first, 'elapsedMilliseconds'), 'answer acknowledgement must not leak scoring');
   const duplicate = await rpc('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
   });
   assert.equal(duplicate.idempotent, true);
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: snapshot.data.choices[1].id,
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: snapshot.data.choices.find((choice) => choice.id !== choiceId).id, p_expected_round: 0,
   }, 'ANSWER_IMMUTABLE');
+  await delay(750);
+  assert.equal(broadcasts.length, 1, 'same-phase answers and idempotent retries must not fan out audience broadcasts');
 
+  await anon.removeChannel(roomChannel);
+  roomChannel = undefined;
   await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'lock' });
+  snapshot = await admin.from('room_snapshots').select('phase,version').eq('room_code', roomCode).single();
+  assert(!snapshot.error);
+  assert.equal(snapshot.data.phase, 'answers_locked', 'authoritative hydration must expose a transition missed while disconnected');
+  assert.equal(broadcasts.length, 1, 'a disconnected channel must not receive the missed transition later as a duplicate');
+  roomChannel = await subscribeRoom();
   await expectMarker('submit_answer', {
-    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId,
+    p_code: roomCode, p_player_id: second.playerId, p_participant_token_hash: await hash(secondToken), p_employee_id: choiceId, p_expected_round: 0,
   }, 'ANSWERS_CLOSED');
   await expectMarker('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'show_results' }, 'ILLEGAL_TRANSITION');
   await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'reveal' });
+  await waitFor(() => broadcasts.length >= 2, 'The phase push after Realtime reconnect was not received.');
+  await delay(500);
+  assert.equal(broadcasts.length, 2, 'Reconnect must retain exactly one channel and one delivery per subsequent phase');
+  assert.equal(broadcasts[1].phase, 'employee_revealed');
+  assert.equal(broadcasts[1].snapshot?.phase, 'employee_revealed');
   snapshot = await admin.from('room_snapshots').select('*').eq('room_code', roomCode).single();
   assert(snapshot.data.revealed_employee?.id, 'correct identity should appear at reveal');
   assert.equal(snapshot.data.results, null);
   const path = await rpc('reveal_media_path', { p_code: roomCode, p_member_id: snapshot.data.revealed_employee.id });
-  assert.match(path, /^portraits\/.*\.webp$/);
+  assert.match(path.storagePath, /^portraits\/.*\.webp$/);
+  assert.equal(path.mimeType, 'image/webp');
   await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'show_results' });
   snapshot = await admin.from('room_snapshots').select('*').eq('room_code', roomCode).single();
   assert.equal(snapshot.data.results.totalAnswers, 1);
   assert.equal(snapshot.data.results.correctAnswers, choiceId === snapshot.data.revealed_employee.id ? 1 : 0);
   assert.equal(snapshot.data.results.choices.length, 4);
   assert.equal(snapshot.data.results.choices.reduce((sum, item) => sum + item.count, 0), 1);
+  const ledger = await admin.from('answers').select('submitted_at,authoritative_elapsed_ms,is_correct,points_awarded,streak_before,streak_after').eq('room_id', roomId).eq('player_id', player.playerId).single();
+  assert(!ledger.error);
+  assert.equal(ledger.data.is_correct, true);
+  assert(Number.isInteger(ledger.data.authoritative_elapsed_ms) && ledger.data.authoritative_elapsed_ms >= 0 && ledger.data.authoritative_elapsed_ms <= 86_400_000);
+  const scoringElapsed = Math.min(20_000, Math.max(0, ledger.data.authoritative_elapsed_ms));
+  assert.equal(ledger.data.points_awarded, 750 + Math.floor((250 * (20_000 - scoringElapsed) + 10_000) / 20_000));
+  assert.equal(ledger.data.streak_before, 0);
+  assert.equal(ledger.data.streak_after, 1);
+  const aggregate = await admin.from('players').select('total_score,correct_answer_count,correct_response_ms,current_streak').eq('id', player.playerId).single();
+  assert.deepEqual(aggregate.data, { total_score: ledger.data.points_awarded, correct_answer_count: 1, correct_response_ms: ledger.data.authoritative_elapsed_ms, current_streak: 1 });
+  const anonymousScoreMutation = await anon.from('players').update({ total_score: 999999 }).eq('id', player.playerId);
+  assert(anonymousScoreMutation.error, 'anonymous clients must not mutate authoritative score aggregates');
+  const anonymousAnswerRpc = await anon.rpc('submit_answer', {
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
+  });
+  assert(anonymousAnswerRpc.error, 'anonymous clients must not directly invoke the authoritative answer RPC');
+  await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'show_leaderboard' });
+  snapshot = await admin.from('room_snapshots').select('*').eq('room_code', roomCode).single();
+  assert.equal(snapshot.data.phase, 'leaderboard_displayed');
+  assert.equal(snapshot.data.leaderboard.entries[0].totalScore, ledger.data.points_awarded);
+  assert.equal(snapshot.data.leaderboard.entries[0].displayName, player.displayName);
+  await rpc('host_action', { p_code: roomCode, p_host_token_hash: await hash(hostToken), p_action: 'next_round' });
+  const staleRetry = await rpc('submit_answer', {
+    p_code: roomCode, p_player_id: player.playerId, p_participant_token_hash: await hash(participantToken), p_employee_id: choiceId, p_expected_round: 0,
+  });
+  assert.equal(staleRetry.idempotent, true, 'an old-round retry must recover its original answer instead of scoring the new round');
+  const ledgerAfterStaleRetry = await admin.from('answers').select('*', { count: 'exact', head: true }).eq('room_id', roomId).eq('player_id', player.playerId);
+  assert.equal(ledgerAfterStaleRetry.count, 1, 'an old-round retry must not create or award a second answer');
 
-  console.log('Supabase integration/security checks passed (RLS, CSPRNG layout, 100-player concurrency cap, credentials, Storage denial, transitions, leakage, result math).');
+  console.log('Supabase integration/security checks passed (RLS, authoritative scoring/timing, score secrecy, idempotency, leaderboard, 225-player cap, Realtime, credentials, Storage denial, transitions, and result math).');
 } finally {
   if (roomChannel) await anon.removeChannel(roomChannel);
   if (forgedObserverChannel && forgedObserver) await forgedObserver.removeChannel(forgedObserverChannel);
-  if (realtimeAuthUserId) {
-    const deletedAuthUser = await admin.auth.admin.deleteUser(realtimeAuthUserId);
-    if (deletedAuthUser.error) authCleanupError = deletedAuthUser.error;
-  }
   for (const room of cleanupRooms) {
     const deletedSnapshot = await admin.from('room_snapshots').delete().eq('room_code', room.roomCode);
     if (deletedSnapshot.error) cleanupErrors.push(`snapshot ${room.roomCode}: ${deletedSnapshot.error.message}`);
@@ -294,7 +365,6 @@ try {
       cleanupErrors.push(`limiter: ${error instanceof Error ? error.message : 'unknown error'}`);
     }
   }
-  if (authCleanupError) cleanupErrors.push(`Realtime test user: ${authCleanupError.message}`);
   if (cleanupErrors.length > 0) {
     console.error(`Integration cleanup failed: ${cleanupErrors.join('; ')}`);
     process.exitCode = 1;

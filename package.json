@@ -25,8 +25,13 @@
     "supabase:apply": "node --env-file=.env scripts/apply-supabase.mjs",
     "content:upload": "node --env-file=.env scripts/upload-demo-content.mjs",
     "test:integration": "node --env-file=.env scripts/test-supabase.mjs",
+    "test:lifecycle": "node --env-file=.env scripts/test-lifecycle.mjs",
+    "capacity:dry": "node scripts/load-capacity.mjs --participants=225 --rounds=3",
+    "capacity:stages": "node --env-file=.env scripts/run-capacity-stages.mjs",
+    "capacity:platform": "node --env-file=.env scripts/configure-capacity.mjs",
     "cloudflare:configure": "node --env-file=.env scripts/configure-cloudflare.mjs",
-    "deploy": "npm run build && npm run check:functions && npm run check:bundle && wrangler pages deploy dist"
+    "deploy": "npm run build && npm run check:functions && npm run check:bundle && wrangler pages deploy dist",
+    "deploy:production": "npm run build && npm run check:functions && npm run check:bundle && wrangler pages deploy dist --branch main"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.54.0",

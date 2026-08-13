@@ -44,4 +44,4 @@ npm run test:e2e
 - `docs/DEPLOYMENT.md` — Cloudflare deployment contract
 - `docs/PROJECT_STATUS.md` — concise handoff state
 
-Browser-exposed variables must begin with `VITE_`. Never expose `SUPABASE_SECRET_KEY`, management credentials, Cloudflare tokens, GitHub tokens, or database passwords through Vite configuration or client code. Private Realtime uses a persisted Supabase Anonymous Auth session, not an exposed signing key. Host and participant tokens are independently random; there is no shared host-signing secret.
+Browser-exposed variables must begin with `VITE_`. Never expose `SUPABASE_SECRET_KEY`, management credentials, Cloudflare tokens, GitHub tokens, or database passwords through Vite configuration or client code. Private Realtime uses the project's browser-safe legacy `anon` JWT through `/api/realtime-auth`; RLS and a restrictive send-deny policy remain the authorization boundary. Host and participant tokens are independently random; there is no shared host-signing secret.

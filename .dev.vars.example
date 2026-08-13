@@ -2,3 +2,4 @@
 # not reuse a browser publishable key as the server credential.
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SECRET_KEY=your_secret_key
+SUPABASE_REALTIME_ANON_KEY=your_legacy_anon_jwt

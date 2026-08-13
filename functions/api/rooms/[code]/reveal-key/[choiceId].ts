@@ -1,0 +1,2 @@
+import { adminClient,apiHandler,json,parseRevealKey,roomCode,throwRpcError,uuid } from '../../../../_lib/api';
+export const onRequest=apiHandler('GET',async({env,params})=>{const code=roomCode(params.code);const choiceId=uuid(params.choiceId,'Choice ID');const supabase=adminClient(env);const result=await supabase.rpc('reveal_preload_key',{p_code:code,p_choice_id:choiceId});if(result.error)throwRpcError(result.error);return json(parseRevealKey(result.data),200,{'cache-control':'private, no-store'});});
