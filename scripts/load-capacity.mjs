@@ -547,7 +547,7 @@ class ParticipantClient {
       this.nextInvalidationAllowedAt = 0;
       if (payload.snapshot) this.applySnapshot(payload.snapshot, 'realtime-push');
       else void this.fetchSnapshot('realtime-transition');
-      if (['employee_revealed', 'leaderboard_displayed', 'complete'].includes(payload.phase)) {
+      if (['employee_revealed', 'leaderboard_displayed'].includes(payload.phase)) {
         const started = performance.now();
         void this.fetchSnapshot('personalized-transition').then((ok) => {
           if (ok) this.metrics.personalHydrationLatencies.push(performance.now() - started);
@@ -964,10 +964,14 @@ async function run(config, target) {
       }
       await Promise.all(participants.map(async (participant) => {
         const started = performance.now();
-        if (!(await participant.fetchSnapshot('leaderboard-oracle'))) throw new Error('Personal rank hydration failed.');
-        metrics.personalHydrationLatencies.push(performance.now() - started);
         const expected = ranked.find((entry) => entry.id === participant.playerId);
-        const standing = participant.participantState?.standing;
+        let standing = participant.participantState?.standing;
+        if (!expected) throw new Error(`Missing rank oracle for player ${participant.playerId}.`);
+        if (!standing || standing.rank !== expected.rank || standing.totalScore !== expected.totalScore) {
+          if (!(await participant.fetchSnapshot('leaderboard-oracle'))) throw new Error('Personal rank hydration failed.');
+          metrics.personalHydrationLatencies.push(performance.now() - started);
+          standing = participant.participantState?.standing;
+        }
         if (!expected || !standing || standing.rank !== expected.rank || standing.totalScore !== expected.totalScore
           || participant.participantState.totalScore !== expected.totalScore) {
           metrics.leaderboard.mismatches += 1;

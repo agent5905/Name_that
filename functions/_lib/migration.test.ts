@@ -27,6 +27,7 @@ const scoring = readFileSync(new URL('../../supabase/migrations/202608110017_aut
 const scoringBroadcastFix = readFileSync(new URL('../../supabase/migrations/202608110018_scoring_broadcast_variable_fix.sql',import.meta.url),'utf8');
 const legacyScoringAliasFix = readFileSync(new URL('../../supabase/migrations/202608110019_legacy_scoring_alias_fix.sql',import.meta.url),'utf8');
 const atomicParticipantSnapshot = readFileSync(new URL('../../supabase/migrations/202608110020_atomic_participant_snapshot.sql',import.meta.url),'utf8');
+const scoringWritePathIndex = readFileSync(new URL('../../supabase/migrations/202608110021_scoring_write_path_index.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
@@ -80,6 +81,12 @@ describe('authoritative migration regression guards', () => {
     expect(atomicParticipantSnapshot).toContain('revoke all on function public.participant_room_snapshot');
     expect(atomicParticipantSnapshot).toContain('grant execute on function public.participant_room_snapshot(text, uuid, text) to service_role');
     expect(applyScript).toContain("['202608110020', '../supabase/migrations/202608110020_atomic_participant_snapshot.sql']");
+  });
+
+  it('keeps mutable leaderboard columns off the hot answer write indexes',()=>{
+    expect(scoringWritePathIndex).toContain('drop index if exists public.players_room_leaderboard_idx');
+    expect(migration).toContain('create index players_room_id_idx on public.players(room_id)');
+    expect(applyScript).toContain("['202608110021', '../supabase/migrations/202608110021_scoring_write_path_index.sql']");
   });
 
   it('requires a final leaderboard before completion and retains phase-only broadcasts',()=>{
