@@ -9,6 +9,7 @@ function parseArgs(argv) {
   const values = new Map();
   for (const argument of argv) {
     if (argument === '--execute') values.set('execute', 'true');
+    else if (argument === '--browser-observers') values.set('browser-observers', 'true');
     else if (argument === '--help') values.set('help', 'true');
     else if (argument.startsWith('--') && argument.includes('=')) {
       const index = argument.indexOf('=');
@@ -37,6 +38,7 @@ function parseArgs(argv) {
   }
   return {
     execute: values.get('execute') === 'true',
+    browserObservers: values.get('browser-observers') === 'true',
     help: values.get('help') === 'true',
     participants,
     rounds: integer('rounds', 3, 1, 20),
@@ -77,6 +79,7 @@ Options:
   --transition-timeout-ms=1000..60000
   --output=<path>
   --execute
+  --browser-observers (launch one real host Chrome context and one shared-display context)
 
 Execution environment:
   CAPACITY_ORIGIN, CAPACITY_EXPECTED_HOSTNAME, CAPACITY_EXPECTED_SUPABASE_HOSTNAME,
@@ -161,6 +164,7 @@ function estimate(config) {
     realtime: {
       websocketConnections: config.participants,
       privateChannels: config.participants,
+      browserObserverConnections: config.browserObservers ? 2 : 0,
       phaseBroadcastDeliveriesBeforeOptionalEnd: config.rounds * 4 * config.participants - lateClients,
       optionalEndBroadcastDeliveries: config.participants,
       samePhaseJoinAndAnswerDeliveries: 0,
@@ -171,6 +175,94 @@ function estimate(config) {
     lateJoinClients: lateClients,
     imageRequests: 0,
     note: 'This is a protocol-capacity estimate. Late clients miss the initial start transition, and the optional end broadcast occurs only when every saved-game round is exercised. It deliberately does not download Mystery/Reveal assets or static application bundles.',
+  };
+}
+
+const HOST_ACTION_LABEL = {
+  start: 'Start round', lock: 'Lock answers', reveal: 'Reveal teammate',
+  show_results: 'Show results', next_round: 'Next round', end: 'Finish game',
+};
+
+async function openBrowserObservers(config, origin, room) {
+  const { chromium } = await import('@playwright/test');
+  const browser = await chromium.launch({ headless: true, ...(process.env.CI ? {} : { channel: 'chrome' }) });
+  const hostContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const displayContext = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await hostContext.addInitScript(({ session }) => localStorage.setItem('name-that:host', JSON.stringify(session)), {
+    session: {
+      roomId: room.roomId, code: room.code, token: room.hostToken,
+      gameId: room.gameId, gameRevision: room.gameRevision, gameName: room.gameName,
+    },
+  });
+  const hostPage = await hostContext.newPage();
+  const displayPage = await displayContext.newPage();
+  const report = {
+    enabled: true, hostViewport: '1440x900', displayViewport: '1280x720',
+    contexts: 2, transitionObservations: [], screenshots: [],
+    hostConsoleErrors: 0, displayConsoleErrors: 0, pageErrors: 0, requestFailures: 0, serverResponses: 0,
+  };
+  hostPage.on('console', (message) => { if (message.type() === 'error') report.hostConsoleErrors += 1; });
+  displayPage.on('console', (message) => { if (message.type() === 'error') report.displayConsoleErrors += 1; });
+  for (const page of [hostPage, displayPage]) {
+    page.on('pageerror', () => { report.pageErrors += 1; });
+    page.on('requestfailed', () => { report.requestFailures += 1; });
+    page.on('response', (response) => { if (response.status() >= 500) report.serverResponses += 1; });
+  }
+  await Promise.all([
+    hostPage.goto(`${origin}/host/${room.code}`, { waitUntil: 'domcontentloaded', timeout: 30_000 }),
+    displayPage.goto(`${origin}/display/${room.code}`, { waitUntil: 'domcontentloaded', timeout: 30_000 }),
+  ]);
+  await Promise.all([
+    hostPage.getByRole('heading', { name: 'The room is open.' }).waitFor({ timeout: 15_000 }),
+    displayPage.locator('.display-state-lobby').waitFor({ timeout: 15_000 }),
+  ]);
+
+  const nextLabel = (phase, roundIndex) => phase === 'question_open' ? 'Lock answers'
+    : phase === 'answers_locked' ? 'Reveal teammate'
+      : phase === 'employee_revealed' ? 'Show results'
+        : phase === 'results_displayed' ? (roundIndex === config.rounds - 1 ? 'Finish game' : 'Next round')
+          : phase === 'complete' ? 'Play again' : 'Start round';
+  const imageReady = async () => {
+    await displayPage.locator('.portrait-chamber img').evaluate((image) => new Promise((resolvePromise, reject) => {
+      const element = image;
+      if (element.complete && element.naturalWidth > 0) return resolvePromise(true);
+      const timeout = setTimeout(() => reject(new Error('Display image did not decode in time.')), 10_000);
+      element.addEventListener('load', () => { clearTimeout(timeout); resolvePromise(true); }, { once: true });
+      element.addEventListener('error', () => { clearTimeout(timeout); reject(new Error('Display image failed.')); }, { once: true });
+    }));
+  };
+  return {
+    report,
+    async trigger(action) {
+      const locator = hostPage.getByRole('button', { name: new RegExp(`^${HOST_ACTION_LABEL[action]}`) });
+      const started = performance.now();
+      await locator.click({ timeout: 15_000 });
+      return performance.now() - started;
+    },
+    async observe(phase, roundIndex, startedAt) {
+      const hostReady = hostPage.getByRole('button', { name: new RegExp(`^${nextLabel(phase, roundIndex)}`) })
+        .waitFor({ timeout: 15_000 }).then(() => performance.now() - startedAt);
+      const displayReady = displayPage.locator(`.display-state-${phase}`).waitFor({ timeout: 15_000 })
+        .then(() => performance.now() - startedAt);
+      const [hostLatencyMs, displayLatencyMs] = await Promise.all([hostReady, displayReady]);
+      if (phase === 'question_open' || phase === 'answers_locked' || phase === 'employee_revealed' || phase === 'results_displayed') {
+        await imageReady();
+      }
+      report.transitionObservations.push({ phase, roundIndex, hostLatencyMs, displayLatencyMs });
+      if (config.output && roundIndex === 0 && ['question_open', 'employee_revealed', 'results_displayed'].includes(phase)) {
+        const path = resolve(dirname(config.output), `${config.participants}-display-${phase}.png`);
+        await displayPage.screenshot({ path, animations: 'disabled' });
+        report.screenshots.push(path);
+      }
+      if (config.output && phase === 'complete') {
+        const directory = dirname(config.output);
+        const hostPath = resolve(directory, `${config.participants}-host-complete.png`);
+        const displayPath = resolve(directory, `${config.participants}-display-complete.png`);
+        await Promise.all([hostPage.screenshot({ path: hostPath, animations: 'disabled' }), displayPage.screenshot({ path: displayPath, animations: 'disabled' })]);
+        report.screenshots.push(hostPath, displayPath);
+      }
+    },
+    async close() { await browser.close(); },
   };
 }
 
@@ -576,6 +668,7 @@ async function run(config, target) {
   const participants = [];
   let room = null;
   let activeTransition = null;
+  let browserObservers = null;
   let aborted = false;
   const abort = () => { aborted = true; };
   process.once('SIGINT', abort);
@@ -619,6 +712,9 @@ async function run(config, target) {
     const cleanupErrors = [];
     const closed = await Promise.allSettled(participants.map((participant) => participant.close()));
     for (const result of closed) if (result.status === 'rejected') cleanupErrors.push(`client close: ${safeError(result.reason)}`);
+    if (browserObservers) {
+      try { await browserObservers.close(); } catch (error) { cleanupErrors.push(`browser close: ${safeError(error)}`); }
+    }
     if (room) {
       const read = await admin.from('rooms').select('id,code,game_id').eq('id', room.roomId).maybeSingle();
       if (read.error) cleanupErrors.push(`room guard read: ${read.error.message}`);
@@ -643,18 +739,24 @@ async function run(config, target) {
     const id = `${roundIndex}:${phase}`;
     activeTransition = { id, action, phase, roundIndex, started: performance.now() };
     metrics.http.total += 1;
-    metrics.http.supabaseHostRest += 1;
-    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/host_action_direct`, {
-      method: 'POST',
-      headers: { apikey: publishableKey, authorization: `Bearer ${publishableKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ p_code: room.code, p_host_token: room.hostToken, p_action: action }),
-      signal: AbortSignal.timeout(Math.max(config.transitionTimeoutMs, 30_000)),
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      const category = categoryFor(response.status, payload, 'HOST_ACTION_FAILED');
-      metrics.error(category);
-      throw new Error(`${category} (${response.status})`);
+    let hostControlLatencyMs = null;
+    if (browserObservers) {
+      metrics.http.total -= 1;
+      hostControlLatencyMs = await browserObservers.trigger(action);
+    } else {
+      metrics.http.supabaseHostRest += 1;
+      const response = await fetch(`${supabaseUrl}/rest/v1/rpc/host_action_direct`, {
+        method: 'POST',
+        headers: { apikey: publishableKey, authorization: `Bearer ${publishableKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ p_code: room.code, p_host_token: room.hostToken, p_action: action }),
+        signal: AbortSignal.timeout(Math.max(config.transitionTimeoutMs, 30_000)),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const category = categoryFor(response.status, payload, 'HOST_ACTION_FAILED');
+        metrics.error(category);
+        throw new Error(`${category} (${response.status})`);
+      }
     }
     const deadline = Date.now() + config.transitionTimeoutMs;
     while (Date.now() < deadline && participants.some((participant) => !participant.transitionObservations.has(id))) await sleep(25);
@@ -665,10 +767,12 @@ async function run(config, target) {
     metrics.transitions.push({
       action, phase, roundIndex, delivered: observations.length,
       missed: participants.length - observations.length, ...summarize(latencies), sourceCounts,
+      ...(hostControlLatencyMs === null ? {} : { hostControlLatencyMs }),
       ...(phase === 'results_displayed' ? {
         answerTotals: [...new Set(participants.map((participant) => participant.currentSnapshot?.results?.totalAnswers ?? null))],
       } : {}),
     });
+    if (browserObservers) await browserObservers.observe(phase, roundIndex, activeTransition.started);
     const expectedAnswerTotal = metrics.answers.acceptedByRound[roundIndex] ?? 0;
     if (phase === 'results_displayed' && participants.some((participant) => participant.currentSnapshot?.results?.totalAnswers !== expectedAnswerTotal)) {
       metrics.error('RESULT_TOTAL_MISMATCH');
@@ -692,6 +796,7 @@ async function run(config, target) {
     if (config.rounds > lobby.snapshot.roundCount) {
       throw new Error(`Requested ${config.rounds} rounds, but the saved game has ${lobby.snapshot.roundCount}.`);
     }
+    if (config.browserObservers) browserObservers = await openBrowserObservers(config, target.origin, room);
 
     const lateCount = config.rounds > 1 ? Math.ceil(config.participants * config.latePercent / 100) : 0;
     const initialCount = config.participants - lateCount;
@@ -871,6 +976,11 @@ async function run(config, target) {
   if (config.participants === 225 && (metrics.capacityBoundary.attempted !== 1
     || metrics.capacityBoundary.rejectedRoomFull !== 1 || metrics.capacityBoundary.failed !== 0)) invariantFailures.push('226th participant boundary');
   if (!generator.healthy) invariantFailures.push('load generator health');
+  if (config.browserObservers && (!browserObservers
+    || browserObservers.report.transitionObservations.length !== expectedTransitions
+    || browserObservers.report.hostConsoleErrors !== 0 || browserObservers.report.displayConsoleErrors !== 0
+    || browserObservers.report.pageErrors !== 0 || browserObservers.report.requestFailures !== 0
+    || browserObservers.report.serverResponses !== 0)) invariantFailures.push('host/display browser observers');
   const report = {
     schemaVersion: 1,
     runId,
@@ -905,6 +1015,7 @@ async function run(config, target) {
       errorsByCategory: metrics.errors,
       durationMs,
       loadGenerator: generator,
+      browserObservers: browserObservers?.report ?? { enabled: false },
       cleanup: cleanupError ? { passed: false, error: safeError(cleanupError) } : { passed: true, roomDeleted: Boolean(room) },
     },
     exclusions: [

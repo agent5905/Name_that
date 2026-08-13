@@ -17,6 +17,10 @@ if (!stages.length || stages.some((stage) => !Number.isInteger(stage) || !allowe
 if (stages.some((stage, index) => index > 0 && stage <= stages[index - 1])) {
   throw new Error('Stages must be strictly increasing.');
 }
+const browserObservers = process.env.CAPACITY_BROWSER_OBSERVERS === '1';
+if (browserObservers && (stages.length !== 1 || stages[0] !== 225)) {
+  throw new Error('CAPACITY_BROWSER_OBSERVERS=1 is reserved for the single final 225-client rehearsal.');
+}
 const origin = required('CAPACITY_ORIGIN').replace(/\/$/, '');
 const expectedHostname = required('CAPACITY_EXPECTED_HOSTNAME');
 if (new URL(origin).hostname !== expectedHostname || !expectedHostname.endsWith('.pages.dev')) {
@@ -94,7 +98,10 @@ async function createFixture() {
 function runStage(stage, adminToken) {
   return new Promise((resolvePromise, reject) => {
     const output = resolve(outputDirectory, `${stage}-client.json`);
-    const child = spawn(process.execPath, ['scripts/load-capacity.mjs', '--execute', `--participants=${stage}`, '--rounds=3', `--output=${output}`], {
+    const child = spawn(process.execPath, [
+      'scripts/load-capacity.mjs', '--execute', `--participants=${stage}`, '--rounds=3',
+      ...(browserObservers ? ['--browser-observers'] : []), `--output=${output}`,
+    ], {
       cwd: process.cwd(), stdio: 'inherit', env: {
         ...process.env,
         CAPACITY_ALLOW_CLIENTS: String(stage),

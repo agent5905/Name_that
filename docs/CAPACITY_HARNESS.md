@@ -39,6 +39,8 @@ Change `CAPACITY_ALLOW_CLIENTS` and the output filename for each subsequent stag
 
 For an approved sequential production batch, `scripts/run-capacity-stages.mjs` creates one isolated three-round fixture with tiny PNG pairs, runs only the explicitly listed increasing stages, and then exact-deletes every fixture room, media row/object, game, and admin profile. It keeps the admin token in process memory and never writes it to a report. Example: `npm run capacity:stages -- 5 10 25`.
 
+The final 225 run additionally uses `--browser-observers`. This launches two independent real Chromium contexts at 1440×900 and 1280×720. The host browser, not the protocol runner, presses every control; the display browser must render every phase and decode the current Mystery/Reveal image. Both contexts contribute one real client/channel to the 227-connection envelope. Console errors, page errors, failed requests, 5xx responses, host/display phase latency, and screenshots become strict report evidence.
+
 ## What one simulated client does
 
 Each participant performs its own join, fetches `/api/realtime-auth` once, creates one Supabase client, opens one Realtime WebSocket with one private `room:<code>` channel, hydrates via HTTP, answers each round, and runs the same 60-second jittered safety reconciliation pattern. No Supabase Anonymous Sign-In is used.
