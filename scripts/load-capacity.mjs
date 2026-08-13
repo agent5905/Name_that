@@ -199,13 +199,18 @@ async function openBrowserObservers(config, origin, room) {
   const report = {
     enabled: true, hostViewport: '1440x900', displayViewport: '1280x720',
     contexts: 2, transitionObservations: [], screenshots: [],
-    hostConsoleErrors: 0, displayConsoleErrors: 0, pageErrors: 0, requestFailures: 0, serverResponses: 0,
+    hostConsoleErrors: 0, displayConsoleErrors: 0, pageErrors: 0,
+    expectedRequestAborts: 0, requestFailures: 0, serverResponses: 0,
   };
   hostPage.on('console', (message) => { if (message.type() === 'error') report.hostConsoleErrors += 1; });
   displayPage.on('console', (message) => { if (message.type() === 'error') report.displayConsoleErrors += 1; });
   for (const page of [hostPage, displayPage]) {
     page.on('pageerror', () => { report.pageErrors += 1; });
-    page.on('requestfailed', () => { report.requestFailures += 1; });
+    page.on('requestfailed', (request) => {
+      const reason = request.failure()?.errorText ?? '';
+      if (/ERR_ABORTED|NS_BINDING_ABORTED/i.test(reason)) report.expectedRequestAborts += 1;
+      else report.requestFailures += 1;
+    });
     page.on('response', (response) => { if (response.status() >= 500) report.serverResponses += 1; });
   }
   await Promise.all([
@@ -796,7 +801,12 @@ async function run(config, target) {
     if (config.rounds > lobby.snapshot.roundCount) {
       throw new Error(`Requested ${config.rounds} rounds, but the saved game has ${lobby.snapshot.roundCount}.`);
     }
-    if (config.browserObservers) browserObservers = await openBrowserObservers(config, target.origin, room);
+    if (config.browserObservers) {
+      browserObservers = await openBrowserObservers(config, target.origin, room);
+      // Browser process startup is fixture setup, not load-generator saturation.
+      // Reset the loop histogram immediately before the participant ramp.
+      eventLoop.reset();
+    }
 
     const lateCount = config.rounds > 1 ? Math.ceil(config.participants * config.latePercent / 100) : 0;
     const initialCount = config.participants - lateCount;

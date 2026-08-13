@@ -1,0 +1,509 @@
+{
+  "schemaVersion": 1,
+  "runId": "98de69c0",
+  "startedAt": "2026-08-13T16:43:01.797Z",
+  "finishedAt": "2026-08-13T16:43:42.311Z",
+  "environment": {
+    "origin": "https://name-that-team-member.pages.dev",
+    "hostname": "name-that-team-member.pages.dev",
+    "gameId": "48d59dd1-face-441d-8e56-eacb7edf315f",
+    "operatorRecordedGitCommit": "1b3af4d795b21fc08e3c1d56e90aae8a3d6ee0b3",
+    "operatorRecordedDeploymentId": "1f41ea72-6045-4e46-871d-9b482de63d84",
+    "deploymentIdentityVerification": "Operator supplied; correlate both values with the Cloudflare deployment dashboard before accepting the report."
+  },
+  "configuration": {
+    "execute": true,
+    "browserObservers": true,
+    "help": false,
+    "participants": 5,
+    "rounds": 3,
+    "joinWindowMs": 2000,
+    "participantPollMs": 60000,
+    "reconnectPercent": 10,
+    "latePercent": 5,
+    "lateJoinWindowMs": 5000,
+    "reconnectOutageMs": 3000,
+    "duplicatePercent": 10,
+    "transitionTimeoutMs": 15000,
+    "answerWindowMs": 5000,
+    "output": "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\browser-smoke\\5-client.json"
+  },
+  "estimate": {
+    "participants": 5,
+    "rounds": 3,
+    "estimatedDurationSeconds": 28,
+    "pagesFunctionRequests": {
+      "sessionCreate": 1,
+      "realtimeCredential": 5,
+      "joins": 5,
+      "initialAndSubscribeSnapshots": "between 5 and 10; concurrent recovery fetches are coalesced",
+      "periodicSnapshots": 3,
+      "answers": 15,
+      "duplicateAnswerProbes": 6,
+      "duplicateJoinRetries": 1,
+      "roomFullBoundaryProbe": 0,
+      "samePhaseInvalidationSnapshots": 0,
+      "externalHostAndDisplaySafetyPollsNotGenerated": "approximately 28 at the target 2-second role interval"
+    },
+    "supabaseRequests": {
+      "hostPhaseRpcCalls": "12 before an optional end action when all saved-game rounds are exercised",
+      "exactRoomCleanup": 5
+    },
+    "realtime": {
+      "websocketConnections": 5,
+      "privateChannels": 5,
+      "browserObserverConnections": 2,
+      "phaseBroadcastDeliveriesBeforeOptionalEnd": 59,
+      "optionalEndBroadcastDeliveries": 5,
+      "samePhaseJoinAndAnswerDeliveries": 0,
+      "baselineBeforeSuppression": "approximately 90 join/answer deliveries if the previous every-snapshot fan-out were retained"
+    },
+    "reconnectClients": 1,
+    "answerLockRaceClients": 1,
+    "lateJoinClients": 1,
+    "imageRequests": 0,
+    "note": "This is a protocol-capacity estimate. Late clients miss the initial start transition, and the optional end broadcast occurs only when every saved-game round is exercised. It deliberately does not download Mystery/Reveal assets or static application bundles."
+  },
+  "results": {
+    "attemptedParticipants": 5,
+    "joins": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "idempotentRetries": 1,
+      "retryFailures": 0
+    },
+    "activeRealtimeConnectionsAtPeak": 5,
+    "realtime": {
+      "subscribed": 0,
+      "peakSubscribed": 5,
+      "inboundEvents": 64,
+      "samePhaseEvents": 0,
+      "invalidEvents": 0,
+      "channelErrors": 0,
+      "maxChannelsPerClient": 1
+    },
+    "answers": {
+      "logicalAttempted": 15,
+      "httpAttempted": 22,
+      "successful": 15,
+      "closedAtLock": 0,
+      "failed": 0,
+      "idempotentDuplicates": 3,
+      "immutableDuplicates": 3,
+      "duplicateProbeFailures": 0,
+      "acceptedByRound": {
+        "0": 5,
+        "1": 5,
+        "2": 5
+      }
+    },
+    "joinLatency": {
+      "count": 5,
+      "averageMs": 167.3,
+      "p50Ms": 155.5,
+      "p95Ms": 226.6,
+      "maxMs": 226.6
+    },
+    "participantReadyLatency": {
+      "count": 5,
+      "averageMs": 531.8,
+      "p50Ms": 471.1,
+      "p95Ms": 823.7,
+      "maxMs": 823.7
+    },
+    "answerLatency": {
+      "count": 15,
+      "averageMs": 162.7,
+      "p50Ms": 161.2,
+      "p95Ms": 246.4,
+      "maxMs": 246.4
+    },
+    "transitions": [
+      {
+        "action": "start",
+        "phase": "question_open",
+        "roundIndex": 0,
+        "delivered": 4,
+        "missed": 0,
+        "count": 4,
+        "averageMs": 204.2,
+        "p50Ms": 203.5,
+        "p95Ms": 205.9,
+        "maxMs": 205.9,
+        "sourceCounts": {
+          "realtime-push": 4
+        },
+        "hostControlLatencyMs": 34.56660000000011
+      },
+      {
+        "action": "lock",
+        "phase": "answers_locked",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 153.1,
+        "p50Ms": 137.9,
+        "p95Ms": 209.8,
+        "maxMs": 209.8,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 21.88590000000113
+      },
+      {
+        "action": "reveal",
+        "phase": "employee_revealed",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 342.4,
+        "p50Ms": 343.4,
+        "p95Ms": 344.6,
+        "maxMs": 344.6,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 226.40360000000146
+      },
+      {
+        "action": "show_results",
+        "phase": "results_displayed",
+        "roundIndex": 0,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 123.7,
+        "p50Ms": 115.3,
+        "p95Ms": 162.5,
+        "maxMs": 162.5,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 9.658799999997427,
+        "answerTotals": [
+          5
+        ]
+      },
+      {
+        "action": "next_round",
+        "phase": "question_open",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 123.9,
+        "p50Ms": 124.3,
+        "p95Ms": 125.1,
+        "maxMs": 125.1,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 14.558899999999994
+      },
+      {
+        "action": "lock",
+        "phase": "answers_locked",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 136.6,
+        "p50Ms": 136.3,
+        "p95Ms": 138.1,
+        "maxMs": 138.1,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 16.310300000001007
+      },
+      {
+        "action": "reveal",
+        "phase": "employee_revealed",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 328.4,
+        "p50Ms": 327.1,
+        "p95Ms": 333.6,
+        "maxMs": 333.6,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 232.2561999999998
+      },
+      {
+        "action": "show_results",
+        "phase": "results_displayed",
+        "roundIndex": 1,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 244.1,
+        "p50Ms": 227.9,
+        "p95Ms": 309.7,
+        "maxMs": 309.7,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 119.58250000000044,
+        "answerTotals": [
+          5
+        ]
+      },
+      {
+        "action": "next_round",
+        "phase": "question_open",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 412.2,
+        "p50Ms": 412.2,
+        "p95Ms": 412.3,
+        "maxMs": 412.3,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 236.06690000000162
+      },
+      {
+        "action": "lock",
+        "phase": "answers_locked",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 141.5,
+        "p50Ms": 141.4,
+        "p95Ms": 143.1,
+        "maxMs": 143.1,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 18.761200000000827
+      },
+      {
+        "action": "reveal",
+        "phase": "employee_revealed",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 332.5,
+        "p50Ms": 332.3,
+        "p95Ms": 334.9,
+        "maxMs": 334.9,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 226.34770000000572
+      },
+      {
+        "action": "show_results",
+        "phase": "results_displayed",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 340.7,
+        "p50Ms": 342,
+        "p95Ms": 342.7,
+        "maxMs": 342.7,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 231.91040000000066,
+        "answerTotals": [
+          5
+        ]
+      },
+      {
+        "action": "end",
+        "phase": "complete",
+        "roundIndex": 2,
+        "delivered": 5,
+        "missed": 0,
+        "count": 5,
+        "averageMs": 244.6,
+        "p50Ms": 244.5,
+        "p95Ms": 247.9,
+        "maxMs": 247.9,
+        "sourceCounts": {
+          "realtime-push": 5
+        },
+        "hostControlLatencyMs": 117.32140000000072
+      }
+    ],
+    "reconnect": {
+      "attempted": 1,
+      "successful": 1,
+      "failed": 0,
+      "identityRecovered": 1,
+      "idempotentResubmits": 1
+    },
+    "capacityBoundary": {
+      "attempted": 0,
+      "rejectedRoomFull": 0,
+      "failed": 0
+    },
+    "answerLockRace": [
+      {
+        "roundIndex": 0,
+        "clients": 1,
+        "accepted": 1,
+        "answersClosed": 0,
+        "unexpected": 0,
+        "lockTransitionLatencyMs": 445.9
+      }
+    ],
+    "snapshots": {
+      "successful": 9,
+      "failed": 0
+    },
+    "httpRequests": {
+      "total": 49,
+      "pagesFunctions": 44,
+      "supabaseClientHttp": 0,
+      "supabaseHostRest": 0,
+      "cleanup": 5
+    },
+    "approximateRealtimeEventVolume": 64,
+    "errorsByCategory": {},
+    "durationMs": 40514,
+    "loadGenerator": {
+      "peakRssBytes": 126324736,
+      "peakHeapUsedBytes": 46094984,
+      "eventLoopDelay": {
+        "meanMs": 35.6,
+        "p95Ms": 32.1,
+        "maxMs": 6274.7
+      },
+      "cpu": {
+        "userMs": 172,
+        "systemMs": 31,
+        "singleCoreUtilizationPercent": 0.5
+      },
+      "thresholds": {
+        "eventLoopP95Ms": 100,
+        "eventLoopMaxMs": 1000,
+        "peakRssBytes": 1610612736
+      },
+      "healthy": false
+    },
+    "browserObservers": {
+      "enabled": true,
+      "hostViewport": "1440x900",
+      "displayViewport": "1280x720",
+      "contexts": 2,
+      "transitionObservations": [
+        {
+          "phase": "question_open",
+          "roundIndex": 0,
+          "hostLatencyMs": 1054.1836999999996,
+          "displayLatencyMs": 227.08460000000014
+        },
+        {
+          "phase": "answers_locked",
+          "roundIndex": 0,
+          "hostLatencyMs": 441.0028999999995,
+          "displayLatencyMs": 238.09460000000036
+        },
+        {
+          "phase": "employee_revealed",
+          "roundIndex": 0,
+          "hostLatencyMs": 673.1936999999998,
+          "displayLatencyMs": 358.82120000000214
+        },
+        {
+          "phase": "results_displayed",
+          "roundIndex": 0,
+          "hostLatencyMs": 500.92649999999776,
+          "displayLatencyMs": 203.09109999999782
+        },
+        {
+          "phase": "question_open",
+          "roundIndex": 1,
+          "hostLatencyMs": 463.54209999999875,
+          "displayLatencyMs": 150.5597999999991
+        },
+        {
+          "phase": "answers_locked",
+          "roundIndex": 1,
+          "hostLatencyMs": 463.3522000000012,
+          "displayLatencyMs": 149.94989999999962
+        },
+        {
+          "phase": "employee_revealed",
+          "roundIndex": 1,
+          "hostLatencyMs": 675.0400000000009,
+          "displayLatencyMs": 361.1767
+        },
+        {
+          "phase": "results_displayed",
+          "roundIndex": 1,
+          "hostLatencyMs": 544.0479999999989,
+          "displayLatencyMs": 341.9351999999999
+        },
+        {
+          "phase": "question_open",
+          "roundIndex": 2,
+          "hostLatencyMs": 744.908199999998,
+          "displayLatencyMs": 431.9589999999989
+        },
+        {
+          "phase": "answers_locked",
+          "roundIndex": 2,
+          "hostLatencyMs": 489.3695999999982,
+          "displayLatencyMs": 181.13870000000315
+        },
+        {
+          "phase": "employee_revealed",
+          "roundIndex": 2,
+          "hostLatencyMs": 673.4126000000033,
+          "displayLatencyMs": 358.88780000000406
+        },
+        {
+          "phase": "results_displayed",
+          "roundIndex": 2,
+          "hostLatencyMs": 560.0141999999978,
+          "displayLatencyMs": 360.21749999999884
+        },
+        {
+          "phase": "complete",
+          "roundIndex": 2,
+          "hostLatencyMs": 269.9881999999998,
+          "displayLatencyMs": 269.89480000000185
+        }
+      ],
+      "screenshots": [
+        "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\browser-smoke\\5-display-question_open.png",
+        "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\browser-smoke\\5-display-employee_revealed.png",
+        "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\browser-smoke\\5-display-results_displayed.png",
+        "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\browser-smoke\\5-host-complete.png",
+        "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\browser-smoke\\5-display-complete.png"
+      ],
+      "hostConsoleErrors": 0,
+      "displayConsoleErrors": 0,
+      "pageErrors": 0,
+      "requestFailures": 13,
+      "serverResponses": 0
+    },
+    "cleanup": {
+      "passed": true,
+      "roomDeleted": true
+    }
+  },
+  "exclusions": [
+    "No static frontend bundles or Mystery/Reveal image bytes are downloaded.",
+    "Each simulated browser fetches the public Realtime credential once; no Supabase Auth users are created.",
+    "A real host browser and shared display are outside this protocol harness and must be run separately for the final rehearsal.",
+    "Duplicate join operations and concurrent duplicate answers are covered here; duplicate-tab UI/socket behavior is covered by the real-browser gauntlet.",
+    "Platform dashboard metrics are not inferred; correlate this report with Supabase and Cloudflare dashboards."
+  ],
+  "pass": false,
+  "failure": "Invariant failure: load generator health, host/display browser observers"
+}
