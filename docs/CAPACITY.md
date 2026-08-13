@@ -2,23 +2,23 @@
 
 ## Release conclusion
 
-**CAPACITY REHEARSAL PASSED; FINAL RELEASE EVIDENCE PARTIALLY BLOCKED.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. All staged protocol runs, including the first full 225-participant rehearsal with real host/display browsers, passed and cleaned up exactly. The remaining external release checkpoint is Cloudflare Functions dashboard evidence; the configured token can deploy Pages but cannot read Workers analytics. A post-rehearsal full browser suite was also correctly throttled by the production image-upload limiter and must be resumed only after its `Retry-After` window, not bypassed.
+**APPLICATION CAPACITY PASSED; FINAL RELEASE EVIDENCE PARTIALLY BLOCKED.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. All staged protocol runs, including the first full 225-participant rehearsal with real host/display browsers, passed and cleaned up exactly. The complete 11-journey production browser gauntlet also passed after honoring the image-upload limiter's `Retry-After` window. The sole remaining external release checkpoint is Cloudflare Functions dashboard evidence; the configured token can deploy Pages but cannot read Workers analytics.
 
 ## Read-only production audit — 2026-08-13
 
 | Surface | Observed | Required before final rehearsal | Status |
 | --- | ---: | ---: | --- |
 | Supabase project | `ACTIVE_HEALTHY`, `us-east-1`, PostgreSQL 17.6 | Healthy throughout rehearsal | Informational |
-| Realtime concurrent users | 500 | At least 500 | **READY FOR STAGED TEST** |
-| Realtime messages/second | 500 | At least 500 | **READY FOR STAGED TEST** |
-| Realtime joins/second | 500 | At least 500 | **READY FOR STAGED TEST** |
-| Realtime payload ceiling | 3000 KiB | Transition snapshots below the configured ceiling | **READY FOR STAGED TEST** |
+| Realtime concurrent users | 500 | At least 500 | **PASS** |
+| Realtime messages/second | 500 | At least 500 | **PASS** |
+| Realtime joins/second | 500 | At least 500 | **PASS** |
+| Realtime payload ceiling | 3000 KiB | Transition snapshots below the configured ceiling | **PASS** |
 | Anonymous Auth sign-ins | Enabled; 120/hour/IP | Not used by the audience protocol | Remove from capacity path |
 | Database connection setting | 60; API pool observed at 10 with no waiting/timeouts | No pool waiting/timeouts or database saturation | **PASS IN REHEARSAL** |
 | Database compute | No selected compute add-on was visible; approximately 455 MiB VM memory was observed | Confirm effective compute and headroom in dashboard | **UNCONFIRMED** |
 | Cloudflare Pages | Production branch `main`; Functions enabled | Confirm Workers plan, request/error/CPU behavior | **UNCONFIRMED** |
 
-The billed organization label alone was not treated as evidence. The live tenant was initially observed at `200/100/100/256`; after the already-approved Pro upgrade, the Realtime configuration was explicitly raised and read back at `500/500/500/3000`. No billing setting, spend cap, Cloudflare service, or database compute size was changed. The staged tests must still demonstrate that the final 227-socket envelope and one transition delivered to the audience remain healthy in practice.
+The billed organization label alone was not treated as evidence. The live tenant was initially observed at `200/100/100/256`; after the already-approved Pro upgrade, the Realtime configuration was explicitly raised and read back at `500/500/500/3000`. No billing setting, spend cap, Cloudflare service, or database compute size was changed. The final rehearsal then demonstrated that the 227-socket envelope and transition delivery remained healthy in practice.
 
 ## Capacity-critical design contract
 
@@ -78,7 +78,7 @@ The exact Supabase window for the 225 run showed zero edge 5xx responses and zer
 
 The final browser instrumentation was validated separately with the passing [`browser-smoke/5-client.json`](capacity-results/browser-smoke/5-client.json). One real 1440×900 host context drove all 13 controls and one real 1280×720 display context rendered every phase and decoded the tiny Mystery/Reveal images. Host phase UI max was 1,091.9 ms; display phase UI max was 496.2 ms. There were no console/page/unexpected request/5xx errors. Thirteen `ERR_ABORTED` requests were the expected cancellation of stale HTTP recovery when a newer phase push won; they are recorded separately from failures. A prior nondeterministic smoke with four same-phase notifications is retained as a failure; the subsequent instrumented run had zero, and the 225 rehearsal retains a strict zero gate rather than waiving it.
 
-The 225 rehearsal captured the shared display at question, reveal, results, and completion, plus the host completion state. These screenshots are checked in beside the JSON report. They show decoded Mystery/Reveal media, the expected results presentation, and the host's final `225 Players / 225 Answers` state. The smaller all-browser acceptance suite was started afterward but stopped at its first media upload with an expected source limiter response (`429`, `Retry-After: 1395` seconds); it created no room and its exact isolated admin/game teardown completed. That limiter event is not a product failure and must not be bypassed. The suite remains a pending browser-only checkpoint after the stated window.
+The 225 rehearsal captured the shared display at question, reveal, results, and completion, plus the host completion state. These screenshots are checked in beside the JSON report. They show decoded Mystery/Reveal media, the expected results presentation, and the host's final `225 Players / 225 Answers` state. The smaller all-browser acceptance suite initially stopped at its first media upload with an expected source limiter response (`429`, `Retry-After: 1395` seconds); it created no room and its exact isolated admin/game teardown completed. The limiter was not bypassed or reset. After its stated window expired, one controlled retry passed all 11 serial journeys in 2.4 minutes. Coverage included two-image/Fun Fact authoring, host/display/mobile participant rendering, Play Again and cross-session crypto isolation, late join in every active phase, refresh recovery, same-tab room switching, participant containment, editor stability, and immutable multi-session history. Production image timings were 165 ms display reveal, 149 ms participant reveal, and 140 ms next-round Mystery against a 500 ms target. The fail-closed teardown passed, and an independent Management SQL audit found zero matching games and zero empty test admin profiles afterward. The concise checkpoint is [`browser-gauntlet-2026-08-13.md`](capacity-results/browser-gauntlet-2026-08-13.md).
 
 ## Hard pass/fail gates
 
@@ -136,3 +136,10 @@ Evidence reviewed by:
 ```
 
 A PASS expires when capacity-critical backend, Realtime, answer, hydration, lifecycle, polling, or preload behavior changes. It does not expire for an unrelated copy-only or styling-only change, but the smaller browser gauntlet should still be rerun when presentation behavior changes.
+
+## Authoritative platform references
+
+- [Supabase Realtime limits](https://supabase.com/docs/guides/realtime/limits)
+- [Supabase Realtime message accounting](https://supabase.com/docs/guides/platform/manage-your-usage/realtime-messages)
+- [Cloudflare Pages Functions metrics](https://developers.cloudflare.com/pages/functions/metrics/)
+- [Cloudflare GraphQL Analytics authentication](https://developers.cloudflare.com/analytics/graphql-api/getting-started/authentication/)
