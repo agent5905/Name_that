@@ -25,6 +25,7 @@ const capacity225 = readFileSync(new URL('../../supabase/migrations/202608110015
 const leaderboardPhase = readFileSync(new URL('../../supabase/migrations/202608110016_leaderboard_phase.sql',import.meta.url),'utf8');
 const scoring = readFileSync(new URL('../../supabase/migrations/202608110017_authoritative_scoring.sql',import.meta.url),'utf8');
 const scoringBroadcastFix = readFileSync(new URL('../../supabase/migrations/202608110018_scoring_broadcast_variable_fix.sql',import.meta.url),'utf8');
+const legacyScoringAliasFix = readFileSync(new URL('../../supabase/migrations/202608110019_legacy_scoring_alias_fix.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
@@ -45,6 +46,9 @@ describe('authoritative migration regression guards', () => {
     expect(answer).not.toContain('p_elapsed');
     expect(answer).not.toContain('p_score');
     expect(scoring).toContain('250::bigint * (20000 - least(greatest(p_elapsed_ms,0),20000)) + 10000');
+    expect(legacyScoringAliasFix).toContain('from public.rounds legacy_round');
+    expect(legacyScoringAliasFix).not.toContain('from public.rounds r\n');
+    expect(applyScript).toContain("['202608110019', '../supabase/migrations/202608110019_legacy_scoring_alias_fix.sql']");
   });
 
   it('updates the score aggregate only after a unique immutable answer insert',()=>{

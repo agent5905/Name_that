@@ -251,8 +251,8 @@ begin
   if r.content_mode='saved'then
     select is_correct into correct from public.session_choices where question_id=qid and id=p_employee_id;
   else
-    select(r.correct_employee_id=p_employee_id)into correct from public.rounds r
-      where r.id=qid and exists(select 1 from public.round_choices c where c.round_id=qid and c.employee_id=p_employee_id);
+    select(legacy_round.correct_employee_id=p_employee_id)into correct from public.rounds legacy_round
+      where legacy_round.id=qid and exists(select 1 from public.round_choices c where c.round_id=qid and c.employee_id=p_employee_id);
   end if;
   if correct is null then raise exception using errcode='22023',message='INVALID_CHOICE';end if;
   accepted:=clock_timestamp();

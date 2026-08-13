@@ -40,6 +40,7 @@ const ordered = [
   ['202608110016', '../supabase/migrations/202608110016_leaderboard_phase.sql'],
   ['202608110017', '../supabase/migrations/202608110017_authoritative_scoring.sql'],
   ['202608110018', '../supabase/migrations/202608110018_scoring_broadcast_variable_fix.sql'],
+  ['202608110019', '../supabase/migrations/202608110019_legacy_scoring_alias_fix.sql'],
 ];
 const initial = await query("select exists(select 1 from pg_type where typname='game_phase') as applied");
 if (initial[0]?.applied) await query("insert into public.app_schema_migrations(version) values('202608110001') on conflict do nothing");
