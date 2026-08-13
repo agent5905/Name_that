@@ -41,7 +41,7 @@ Run the checked-in protocol harness in order. Stop on unexplained errors, failed
 | 5 | Protocol correctness and report validation | [`5-client.json`](capacity-results/5-client.json) | **PASS** |
 | 10 | Early concurrency and duplicate-answer gate | [`10-client.json`](capacity-results/10-client.json) | **PASS** |
 | 25 | First meaningful ramp and reconnect check | [`25-client.json`](capacity-results/25-client.json) | **PASS** |
-| 50 | DB/API contention trend | _pending_ | _pending_ |
+| 50 | DB/API contention trend | [`50-client.json`](capacity-results/50-client.json) | **PASS** |
 | 100 | Realtime/Pages trend and dashboard correlation | _pending_ | _pending_ |
 | 175 | Real audience target | _pending_ | _pending_ |
 | 225 | Engineering headroom; run once after all critical fixes | _pending_ | _pending_ |
@@ -57,8 +57,13 @@ All passing reports target commit `1b3af4d795b21fc08e3c1d56e90aae8a3d6ee0b3`, Cl
 | 5 | 26.4 s | 202.7 ms | 614.2 ms | 201.1 ms | 216.5 ms | 1/1 | 43 | 64 | 82.3 MiB / 32.1 ms |
 | 10 | 26.1 s | 214.4 ms | 921.3 ms | 195.8 ms | 218.5 ms | 1/1 | 73 | 129 | 85.9 MiB / 32.1 ms |
 | 25 | 59.8 s | 288.5 ms | 646.9 ms | 196.5 ms | 359.7 ms | 3/3 | 185 | 323 | 89.5 MiB / 32.1 ms |
+| 50 | 59.4 s | 179.7 ms | 703.2 ms | 179.9 ms | 296.0 ms | 5/5 | 371 | 647 | 100.8 MiB / 32.1 ms |
 
 Every passing stage recorded all intended joins and answers, exact Results totals, one channel per simulated browser, zero missed transitions, zero same-phase events, zero malformed events/channel errors, and zero unexpected error categories. The first 5-client attempt is retained as [`5-client-failed-reconnect-harness.json`](capacity-results/5-client-failed-reconnect-harness.json): it exposed that the simulator waited for a manually removed channel to resurrect, while production replaces a terminal channel lease. The harness was corrected to recreate one channel on the same client and the controlled 5-client rerun passed; no deployed runtime change was made for that harness-only defect.
+
+For the exact 50-client window, Supabase Management telemetry showed 0 edge 5xx responses and 0 Realtime log events. PostgreSQL recorded 16 `P0001` application exceptions, matching the 15 deliberately immutable duplicate-choice probes plus the one expected answer rejected at the Lock boundary; the harness independently recorded no unexpected errors. Minute-bucket usage around the stage was 48 then 5 Realtime requests, 295 then 161 REST requests, and 9 then 1 Storage requests. These vendor counts are aggregate requests, not delivered Realtime messages, and include fixture setup/cleanup in the same minutes.
+
+The configured Cloudflare token can deploy and inspect Pages deployments but its read-only GraphQL Workers analytics query returned `authorization denied`. Cloudflare's Functions Metrics dashboard evidence—successful/error invocations, subrequests, and CPU/resource outcomes—therefore remains a mandatory human/dashboard checkpoint before 175/225 can be accepted; it is not inferred from the harness.
 
 ## Hard pass/fail gates
 
