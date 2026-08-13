@@ -34,6 +34,7 @@ interface Database {
       host_action: { Args: { p_code: string; p_host_token_hash: string; p_action: string }; Returns: Json };
       host_room: { Args: { p_code: string; p_host_token_hash: string }; Returns: HostRoomResponse };
       participant_answer: { Args: { p_code: string; p_player_id: string; p_participant_token_hash: string }; Returns: Json };
+      participant_room_snapshot: { Args: { p_code: string; p_player_id: string; p_participant_token_hash: string }; Returns: Json };
       reveal_media_path: { Args: { p_code: string; p_member_id: string }; Returns: Json };
       consume_room_creation_attempt: { Args: { p_source_hash: string }; Returns: Json };
       consume_saved_session_attempt: { Args: { p_source_hash: string }; Returns: Json };
@@ -558,6 +559,14 @@ export function parseParticipantState(value:unknown,phase?:unknown,currentRound?
     if(roundFeedback!==null&&roundFeedback.roundIndex!==currentRound)throw new Error('Invalid data service response.');
   }
   return{answerEmployeeId,totalScore,roundFeedback,standing};
+}
+
+export function parseParticipantRoomSnapshot(value:unknown):{
+  readonly snapshot:Record<string,unknown>;
+  readonly participant:ParticipantStateResponse;
+}{
+  const row=rpcObject(value);const snapshot=rpcObject(row.snapshot);
+  return{snapshot,participant:parseParticipantState(row.participant,snapshot.phase,snapshot.round_index)};
 }
 
 export function parseHostRoom(value: unknown): HostRoomResponse {

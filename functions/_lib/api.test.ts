@@ -5,6 +5,7 @@ import {
   parseMediaByteLimit, parseRoomCreationLimit, parseSubmittedAnswer, readJson, requireAction, roomCode,
   roomCreationSourceHash, throwRpcError, tokenHash, uuid,
   preloadCacheKey, preloadQuery, realtimeAnonToken, expectedRound, parseParticipantState,
+  parseParticipantRoomSnapshot,
 } from './api';
 import { definition } from '../api/games/index';
 import { answerRequest } from '../api/rooms/[code]/answers';
@@ -171,6 +172,12 @@ describe('credential primitives and service errors', () => {
 });
 
 describe('sanitized API snapshot shape', () => {
+  it('validates a transition-consistent public and private participant projection',()=>{
+    const player='550e8400-e29b-41d4-a716-446655440000';
+    const value={snapshot:{room_code:'ABCDE',phase:'leaderboard_displayed',round_index:1},participant:{employeeId:player,totalScore:875,roundFeedback:{roundIndex:1,outcome:'correct',points:875,streak:2},standing:{rank:3,totalScore:875}}};
+    expect(parseParticipantRoomSnapshot(value)).toEqual({snapshot:value.snapshot,participant:{answerEmployeeId:player,totalScore:875,roundFeedback:{roundIndex:1,outcome:'correct',points:875,streak:2},standing:{rank:3,totalScore:875}}});
+    expect(()=>parseParticipantRoomSnapshot({...value,snapshot:{...value.snapshot,phase:'results_displayed'}})).toThrow('Invalid data service response.');
+  });
   it('normalizes only the sanctioned columns', () => {
     const snapshot = normalizeSnapshot({
       room_code: 'ABCDE', phase: 'lobby', host_token_hash: 'never', results: null,

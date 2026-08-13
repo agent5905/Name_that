@@ -26,6 +26,7 @@ const leaderboardPhase = readFileSync(new URL('../../supabase/migrations/2026081
 const scoring = readFileSync(new URL('../../supabase/migrations/202608110017_authoritative_scoring.sql',import.meta.url),'utf8');
 const scoringBroadcastFix = readFileSync(new URL('../../supabase/migrations/202608110018_scoring_broadcast_variable_fix.sql',import.meta.url),'utf8');
 const legacyScoringAliasFix = readFileSync(new URL('../../supabase/migrations/202608110019_legacy_scoring_alias_fix.sql',import.meta.url),'utf8');
+const atomicParticipantSnapshot = readFileSync(new URL('../../supabase/migrations/202608110020_atomic_participant_snapshot.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
@@ -70,6 +71,15 @@ describe('authoritative migration regression guards', () => {
     expect(scoring).toContain('total_score desc,p.correct_answer_count desc');
     expect(scoring).toContain("'correctAnswers',correct_answer_count");
     expect(scoring).toContain("r.current_round=last_round then 10 else 5");
+  });
+
+  it('hydrates public and private participant state under the exclusive phase gate',()=>{
+    expect(atomicParticipantSnapshot).toContain("pg_advisory_xact_lock_shared(hashtextextended('room-answer-gate:' || p_code, 0))");
+    expect(atomicParticipantSnapshot).toContain('v_participant := public.participant_answer');
+    expect(atomicParticipantSnapshot).toContain("jsonb_build_object('snapshot', v_snapshot, 'participant', v_participant)");
+    expect(atomicParticipantSnapshot).toContain('revoke all on function public.participant_room_snapshot');
+    expect(atomicParticipantSnapshot).toContain('grant execute on function public.participant_room_snapshot(text, uuid, text) to service_role');
+    expect(applyScript).toContain("['202608110020', '../supabase/migrations/202608110020_atomic_participant_snapshot.sql']");
   });
 
   it('requires a final leaderboard before completion and retains phase-only broadcasts',()=>{

@@ -1087,10 +1087,14 @@ async function run(config, target) {
       if (raceParticipants.length) {
         let releaseRace;
         const raceGate = new Promise((resolvePromise) => { releaseRace = resolvePromise; });
-        const raceAnswers = raceParticipants.map(async (participant, offset) => {
+        const raceAnswers = raceParticipants.map(async (participant) => {
           await raceGate;
           const correctChoiceId = context.correctChoiceByRound.get(roundIndex);
-          const choiceId = (normalParticipants.length + offset) % 2 === 0
+          const cohort = participant.index % 5;
+          const shouldAnswerCorrectly = cohort === 0
+            || (cohort === 1 && roundIndex !== 1)
+            || (cohort === 3 && roundIndex % 2 === 0);
+          const choiceId = shouldAnswerCorrectly
             ? correctChoiceId
             : participant.currentSnapshot.choices.find((choice) => choice.id !== correctChoiceId).id;
           const alternative = participant.currentSnapshot.choices.find((choice) => choice.id !== choiceId)?.id;
