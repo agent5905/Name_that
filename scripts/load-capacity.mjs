@@ -526,7 +526,9 @@ class ParticipantClient {
     this.broadcastVersions.add(payload.version);
     const expectedTransition = this.context.activeTransition?.phase === payload.phase
       && this.context.activeTransition?.roundIndex === payload.snapshot?.roundIndex;
-    if (duplicateBroadcast || (payload.phase === this.currentSnapshot?.phase && !expectedTransition)) {
+    const unexplainedNewerSamePhase = payload.phase === this.currentSnapshot?.phase
+      && payload.version > this.currentVersion && !expectedTransition;
+    if (duplicateBroadcast || unexplainedNewerSamePhase) {
       this.metrics.realtime.samePhaseEvents += 1;
       if (this.metrics.realtime.samePhaseSamples.length < 20) this.metrics.realtime.samePhaseSamples.push({
         participantIndex: this.index,
