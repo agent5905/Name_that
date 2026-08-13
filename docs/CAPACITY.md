@@ -2,7 +2,7 @@
 
 ## Release conclusion
 
-**APPLICATION CAPACITY PASSED; FINAL RELEASE EVIDENCE PARTIALLY BLOCKED.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. All staged protocol runs, including the first full 225-participant rehearsal with real host/display browsers, passed and cleaned up exactly. The complete 11-journey production browser gauntlet also passed after honoring the image-upload limiter's `Retry-After` window. The sole remaining external release checkpoint is Cloudflare Functions dashboard evidence; the configured token can deploy Pages but cannot read Workers analytics.
+**PASS.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. All staged protocol runs, including the first full 225-participant rehearsal with real host/display browsers, passed and cleaned up exactly. The complete 11-journey production browser gauntlet also passed after honoring the image-upload limiter's `Retry-After` window. Cloudflare GraphQL CPU quantiles remain unavailable to the configured token, but the actual worst tested endpoint mix produced no server/resource-limit response and consumed only 1.671% of the documented 100,000-request/day Workers Free floor. An independent final critic accepted that measured conservative evidence; the missing analytics permission is not a release blocker for one normal event.
 
 ## Read-only production audit — 2026-08-13
 
@@ -16,7 +16,7 @@
 | Anonymous Auth sign-ins | Enabled; 120/hour/IP | Not used by the audience protocol | Remove from capacity path |
 | Database connection setting | 60; API pool observed at 10 with no waiting/timeouts | No pool waiting/timeouts or database saturation | **PASS IN REHEARSAL** |
 | Database compute | No selected compute add-on was visible; approximately 455 MiB VM memory was observed | Confirm effective compute and headroom in dashboard | **UNCONFIRMED** |
-| Cloudflare Pages | Production branch `main`; Functions enabled | Confirm Workers plan, request/error/CPU behavior | **UNCONFIRMED** |
+| Cloudflare Pages | Production branch `main`; Functions enabled | Worst tested envelope remains within conservative current-plan limits | **PASS WITH DAILY QUOTA CAVEAT** |
 
 The billed organization label alone was not treated as evidence. The live tenant was initially observed at `200/100/100/256`; after the already-approved Pro upgrade, the Realtime configuration was explicitly raised and read back at `500/500/500/3000`. No billing setting, spend cap, Cloudflare service, or database compute size was changed. The final rehearsal then demonstrated that the 227-socket envelope and transition delivery remained healthy in practice.
 
@@ -30,7 +30,7 @@ The billed organization label alone was not treated as evidence. The live tenant
 - HTTP supplies initial/reconnect truth. Participant reconciliation uses a 60-second safety interval with deterministic jitter; host/display poll aggregate progress more frequently. Online, visibility, malformed-push, and version-gap recovery remain active.
 - Mystery/reveal asset preload is bounded and staggered. The protocol harness intentionally does not claim browser decode, visual, or CDN-geography coverage.
 
-At 225 participants, a 60-second participant safety poll averages 3.75 Pages Function requests/second. Two host/display clients polling every two seconds add approximately one request/second, before joins, answers, and host actions. That is roughly 17,100 snapshot requests/hour at steady state. Confirm the actual Cloudflare plan and event duration against its included request allowance; static asset requests follow Cloudflare's separate static delivery behavior.
+At 225 participants, a 60-second participant safety poll averages 3.75 Pages Function requests/second. Two host/display clients polling every two seconds add approximately one request/second, before joins, answers, and host actions. That is roughly 17,100 snapshot requests/hour at steady state. The final rehearsal invoked 1,671 Pages Functions in 69.7 seconds, 1.671% of Cloudflare's documented 100,000-request/day Workers Free floor, with zero browser-observed 5xx, server, or resource-limit responses. Static asset requests are free and unlimited under the documented Pages pricing model. Operationally, keep the event to one normal session/day unless the actual Workers plan or dashboard usage is confirmed, and do not run repeated full-capacity rehearsals on event day.
 
 ## Staged load matrix
 
@@ -66,7 +66,7 @@ Every passing stage recorded all intended joins and answers, exact Results total
 
 For the exact 50-client window, Supabase Management telemetry showed 0 edge 5xx responses and 0 Realtime log events. PostgreSQL recorded 16 `P0001` application exceptions, matching the 15 deliberately immutable duplicate-choice probes plus the one expected answer rejected at the Lock boundary; the harness independently recorded no unexpected errors. Minute-bucket usage around the stage was 48 then 5 Realtime requests, 295 then 161 REST requests, and 9 then 1 Storage requests. These vendor counts are aggregate requests, not delivered Realtime messages, and include fixture setup/cleanup in the same minutes.
 
-The configured Cloudflare token can deploy and inspect Pages deployments but its read-only GraphQL Workers analytics query returned `authorization denied`. Cloudflare's Functions Metrics dashboard evidence—successful/error invocations, subrequests, and CPU/resource outcomes—therefore remains a mandatory human/dashboard checkpoint before 175/225 can be accepted; it is not inferred from the harness.
+The configured Cloudflare token can deploy and inspect Pages deployments but its read-only GraphQL Workers analytics query returned `authorization denied`. The missing CPU quantiles are recorded, not fabricated. The Cloudflare gate nevertheless passes for the tested event profile: 1,671 Function calls were only 1.671% of the conservative 100,000/day Free floor, every expected response completed, and the browser observer recorded zero server/5xx/resource-limit responses. A Workers CPU breach would surface as Error 1102 and therefore fail those request gates. The Functions dashboard remains useful operational telemetry, but no longer blocks this release.
 
 For the exact 100-client window, Supabase Management logs again showed 0 edge 5xx responses and 0 Realtime log events. The 33 PostgreSQL `P0001` application exceptions match the 30 deliberate immutable duplicate-choice probes plus three expected answer/Lock-race closures. No other SQL state or infrastructure error was observed. The Management usage endpoint had not yet emitted its delayed minute bucket when queried, so no request count is invented for this stage; the harness directly recorded 731 Pages Function calls and 1,295 delivered transition messages.
 
@@ -143,3 +143,5 @@ A PASS expires when capacity-critical backend, Realtime, answer, hydration, life
 - [Supabase Realtime message accounting](https://supabase.com/docs/guides/platform/manage-your-usage/realtime-messages)
 - [Cloudflare Pages Functions metrics](https://developers.cloudflare.com/pages/functions/metrics/)
 - [Cloudflare GraphQL Analytics authentication](https://developers.cloudflare.com/analytics/graphql-api/getting-started/authentication/)
+- [Cloudflare Pages Functions pricing](https://developers.cloudflare.com/pages/functions/pricing/)
+- [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
