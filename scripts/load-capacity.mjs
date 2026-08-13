@@ -373,6 +373,7 @@ class ParticipantClient {
     this.nextInvalidationAllowedAt = 0;
     this.trailingQueued = false;
     this.transitionObservations = new Map();
+    this.broadcastVersions = new Set();
     this.status = 'NEW';
     this.subscribedCount = 0;
     this.snapshotPromise = null;
@@ -521,7 +522,11 @@ class ParticipantClient {
       this.metrics.error('REALTIME_INVALID_EVENT');
       return;
     }
-    if (payload.phase === this.currentSnapshot?.phase) {
+    const duplicateBroadcast = this.broadcastVersions.has(payload.version);
+    this.broadcastVersions.add(payload.version);
+    const expectedTransition = this.context.activeTransition?.phase === payload.phase
+      && this.context.activeTransition?.roundIndex === payload.snapshot?.roundIndex;
+    if (duplicateBroadcast || (payload.phase === this.currentSnapshot?.phase && !expectedTransition)) {
       this.metrics.realtime.samePhaseEvents += 1;
       if (this.metrics.realtime.samePhaseSamples.length < 20) this.metrics.realtime.samePhaseSamples.push({
         participantIndex: this.index,
