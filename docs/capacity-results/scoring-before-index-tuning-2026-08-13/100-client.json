@@ -1,21 +1,21 @@
 {
   "schemaVersion": 1,
-  "runId": "fe19ec36",
-  "startedAt": "2026-08-13T23:35:39.587Z",
-  "finishedAt": "2026-08-13T23:36:41.943Z",
+  "runId": "51c98835",
+  "startedAt": "2026-08-13T22:51:33.476Z",
+  "finishedAt": "2026-08-13T22:52:53.862Z",
   "environment": {
     "origin": "https://name-that-team-member.pages.dev",
     "hostname": "name-that-team-member.pages.dev",
-    "gameId": "865e20c5-7fa6-4e30-a9b1-44eb378a3f15",
-    "operatorRecordedGitCommit": "c3bea99dd14a1b83be8cd2b74ae0a11cf4f82803",
-    "operatorRecordedDeploymentId": "a78291a2-1e77-4b01-8237-b460e2115f45",
+    "gameId": "4498b6b0-41cb-480b-8969-bd06b917c853",
+    "operatorRecordedGitCommit": "3b2e038da48fc05ff7d8de7731d041fd1d5866e7",
+    "operatorRecordedDeploymentId": "52910ec6-fa2e-443a-b26f-c46609acb061",
     "deploymentIdentityVerification": "Operator supplied; correlate both values with the Cloudflare deployment dashboard before accepting the report."
   },
   "configuration": {
     "execute": true,
     "browserObservers": false,
     "help": false,
-    "participants": 25,
+    "participants": 100,
     "rounds": 3,
     "joinWindowMs": 30000,
     "participantPollMs": 60000,
@@ -26,25 +26,25 @@
     "duplicatePercent": 10,
     "transitionTimeoutMs": 15000,
     "answerWindowMs": 5000,
-    "output": "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\25-client.json"
+    "output": "F:\\AI Projects\\Name_that\\Name_that\\docs\\capacity-results\\100-client.json"
   },
   "estimate": {
-    "participants": 25,
+    "participants": 100,
     "rounds": 3,
     "estimatedDurationSeconds": 56,
     "pagesFunctionRequests": {
       "sessionCreate": 1,
-      "realtimeCredential": 25,
-      "joins": 25,
-      "initialAndSubscribeSnapshots": "between 25 and 50; concurrent recovery fetches are coalesced",
-      "periodicSnapshots": 24,
-      "answers": 75,
-      "duplicateAnswerProbes": 18,
-      "duplicateJoinRetries": 3,
+      "realtimeCredential": 100,
+      "joins": 100,
+      "initialAndSubscribeSnapshots": "between 100 and 200; concurrent recovery fetches are coalesced",
+      "periodicSnapshots": 94,
+      "answers": 300,
+      "duplicateAnswerProbes": 60,
+      "duplicateJoinRetries": 10,
       "roomFullBoundaryProbe": 0,
       "samePhaseInvalidationSnapshots": 0,
-      "personalizedRevealSnapshots": 75,
-      "personalizedLeaderboardSnapshots": 50,
+      "personalizedRevealSnapshots": 300,
+      "personalizedLeaderboardSnapshots": 200,
       "externalHostAndDisplaySafetyPollsNotGenerated": "approximately 56 at the target 2-second role interval"
     },
     "supabaseRequests": {
@@ -52,34 +52,34 @@
       "exactRoomCleanup": 5
     },
     "realtime": {
-      "websocketConnections": 25,
-      "privateChannels": 25,
+      "websocketConnections": 100,
+      "privateChannels": 100,
       "browserObserverConnections": 0,
-      "phaseBroadcastDeliveriesBeforeOptionalEnd": 348,
-      "optionalEndBroadcastDeliveries": 25,
+      "phaseBroadcastDeliveriesBeforeOptionalEnd": 1395,
+      "optionalEndBroadcastDeliveries": 100,
       "samePhaseJoinAndAnswerDeliveries": 0,
-      "baselineBeforeSuppression": "approximately 2,200 join/answer deliveries if the previous every-snapshot fan-out were retained"
+      "baselineBeforeSuppression": "approximately 35,050 join/answer deliveries if the previous every-snapshot fan-out were retained"
     },
-    "reconnectClients": 3,
-    "answerLockRaceClients": 2,
-    "lateJoinClients": 2,
+    "reconnectClients": 10,
+    "answerLockRaceClients": 5,
+    "lateJoinClients": 5,
     "imageRequests": 0,
     "note": "This is a protocol-capacity estimate. Late clients miss the initial start transition, and the optional end broadcast occurs only when every saved-game round is exercised. It deliberately does not download Mystery/Reveal assets or static application bundles."
   },
   "results": {
-    "attemptedParticipants": 25,
+    "attemptedParticipants": 100,
     "joins": {
-      "attempted": 25,
-      "successful": 25,
+      "attempted": 100,
+      "successful": 100,
       "failed": 0,
-      "idempotentRetries": 3,
+      "idempotentRetries": 10,
       "retryFailures": 0
     },
-    "activeRealtimeConnectionsAtPeak": 25,
+    "activeRealtimeConnectionsAtPeak": 100,
     "realtime": {
       "subscribed": 0,
-      "peakSubscribed": 25,
-      "inboundEvents": 373,
+      "peakSubscribed": 100,
+      "inboundEvents": 1495,
       "samePhaseEvents": 0,
       "samePhaseSamples": [],
       "invalidEvents": 0,
@@ -87,72 +87,72 @@
       "maxChannelsPerClient": 1
     },
     "answers": {
-      "logicalAttempted": 75,
-      "httpAttempted": 96,
-      "successful": 75,
-      "closedAtLock": 0,
+      "logicalAttempted": 300,
+      "httpAttempted": 370,
+      "successful": 297,
+      "closedAtLock": 3,
       "failed": 0,
-      "idempotentDuplicates": 9,
-      "immutableDuplicates": 9,
+      "idempotentDuplicates": 30,
+      "immutableDuplicates": 30,
       "duplicateProbeFailures": 0,
       "acceptedByRound": {
-        "0": 25,
-        "1": 25,
-        "2": 25
+        "0": 97,
+        "1": 100,
+        "2": 100
       }
     },
     "joinLatency": {
-      "count": 25,
-      "averageMs": 155.4,
-      "p50Ms": 145.8,
-      "p95Ms": 195,
-      "maxMs": 201.6
+      "count": 100,
+      "averageMs": 152.3,
+      "p50Ms": 147.7,
+      "p95Ms": 185.9,
+      "maxMs": 228.9
     },
     "participantReadyLatency": {
-      "count": 25,
-      "averageMs": 457.7,
-      "p50Ms": 446.9,
-      "p95Ms": 590.2,
-      "maxMs": 595.7
+      "count": 100,
+      "averageMs": 453.3,
+      "p50Ms": 426.3,
+      "p95Ms": 629.9,
+      "maxMs": 740
     },
     "answerLatency": {
-      "count": 75,
-      "averageMs": 149.1,
-      "p50Ms": 143.9,
-      "p95Ms": 182.2,
-      "maxMs": 294.3
+      "count": 297,
+      "averageMs": 244,
+      "p50Ms": 167.6,
+      "p95Ms": 656.4,
+      "maxMs": 940.2
     },
     "personalHydrationLatency": {
-      "count": 126,
-      "averageMs": 418.8,
-      "p50Ms": 458.6,
-      "p95Ms": 675.2,
-      "maxMs": 704.2
+      "count": 800,
+      "averageMs": 2050.1,
+      "p50Ms": 2062.5,
+      "p95Ms": 3502.7,
+      "maxMs": 5820.5
     },
     "scoring": {
       "rounds": [
         {
           "roundIndex": 0,
-          "acceptedAnswers": 25,
-          "expectedPoints": 13385,
-          "actualPoints": 13385
+          "acceptedAnswers": 97,
+          "expectedPoints": 51885,
+          "actualPoints": 51885
         },
         {
           "roundIndex": 1,
-          "acceptedAnswers": 25,
-          "expectedPoints": 4856,
-          "actualPoints": 4856
+          "acceptedAnswers": 100,
+          "expectedPoints": 19289,
+          "actualPoints": 19289
         },
         {
           "roundIndex": 2,
-          "acceptedAnswers": 25,
-          "expectedPoints": 14525,
-          "actualPoints": 14525
+          "acceptedAnswers": 100,
+          "expectedPoints": 57863,
+          "actualPoints": 57863
         }
       ],
-      "ledgerRows": 75,
-      "expectedTotalPoints": 32766,
-      "actualTotalPoints": 32766,
+      "ledgerRows": 297,
+      "expectedTotalPoints": 129037,
+      "actualTotalPoints": 129037,
       "mismatches": 0
     },
     "leaderboard": {
@@ -163,32 +163,32 @@
           "entries": [
             {
               "rank": 1,
-              "displayName": "Capacity fe19ec36 Chris",
-              "totalScore": 927,
+              "displayName": "Capacity 51c98835 Chris",
+              "totalScore": 926,
               "correctAnswers": 1
             },
             {
               "rank": 2,
-              "displayName": "Capacity fe19ec36 Chris",
-              "totalScore": 925,
+              "displayName": "Capacity 51c98835 Chris",
+              "totalScore": 926,
               "correctAnswers": 1
             },
             {
               "rank": 3,
-              "displayName": "Capacity fe19ec36 004",
-              "totalScore": 919,
+              "displayName": "Capacity 51c98835 004",
+              "totalScore": 923,
               "correctAnswers": 1
             },
             {
               "rank": 4,
-              "displayName": "Capacity fe19ec36 006",
-              "totalScore": 913,
+              "displayName": "Capacity 51c98835 006",
+              "totalScore": 923,
               "correctAnswers": 1
             },
             {
               "rank": 5,
-              "displayName": "Capacity fe19ec36 007",
-              "totalScore": 911,
+              "displayName": "Capacity 51c98835 007",
+              "totalScore": 922,
               "correctAnswers": 1
             }
           ]
@@ -199,68 +199,68 @@
           "entries": [
             {
               "rank": 1,
-              "displayName": "Capacity fe19ec36 Chris",
-              "totalScore": 2922,
+              "displayName": "Capacity 51c98835 Chris",
+              "totalScore": 2917,
               "correctAnswers": 3
             },
             {
               "rank": 2,
-              "displayName": "Capacity fe19ec36 006",
-              "totalScore": 2882,
+              "displayName": "Capacity 51c98835 006",
+              "totalScore": 2903,
               "correctAnswers": 3
             },
             {
               "rank": 3,
-              "displayName": "Capacity fe19ec36 011",
-              "totalScore": 2842,
+              "displayName": "Capacity 51c98835 011",
+              "totalScore": 2892,
               "correctAnswers": 3
             },
             {
               "rank": 4,
-              "displayName": "Capacity fe19ec36 016",
-              "totalScore": 2802,
+              "displayName": "Capacity 51c98835 016",
+              "totalScore": 2874,
               "correctAnswers": 3
             },
             {
               "rank": 5,
-              "displayName": "Capacity fe19ec36 021",
-              "totalScore": 2762,
+              "displayName": "Capacity 51c98835 021",
+              "totalScore": 2872,
               "correctAnswers": 3
             },
             {
               "rank": 6,
-              "displayName": "Capacity fe19ec36 Chris",
-              "totalScore": 1920,
-              "correctAnswers": 2
+              "displayName": "Capacity 51c98835 026",
+              "totalScore": 2864,
+              "correctAnswers": 3
             },
             {
               "rank": 7,
-              "displayName": "Capacity fe19ec36 004",
-              "totalScore": 1909,
-              "correctAnswers": 2
+              "displayName": "Capacity 51c98835 031",
+              "totalScore": 2857,
+              "correctAnswers": 3
             },
             {
               "rank": 8,
-              "displayName": "Capacity fe19ec36 007",
-              "totalScore": 1893,
-              "correctAnswers": 2
+              "displayName": "Capacity 51c98835 036",
+              "totalScore": 2851,
+              "correctAnswers": 3
             },
             {
               "rank": 9,
-              "displayName": "Capacity fe19ec36 009",
-              "totalScore": 1882,
-              "correctAnswers": 2
+              "displayName": "Capacity 51c98835 041",
+              "totalScore": 2839,
+              "correctAnswers": 3
             },
             {
               "rank": 10,
-              "displayName": "Capacity fe19ec36 012",
-              "totalScore": 1865,
-              "correctAnswers": 2
+              "displayName": "Capacity 51c98835 046",
+              "totalScore": 2832,
+              "correctAnswers": 3
             }
           ]
         }
       ],
-      "personalRankChecks": 50,
+      "personalRankChecks": 200,
       "mismatches": 0
     },
     "transitions": [
@@ -268,243 +268,244 @@
         "action": "start",
         "phase": "question_open",
         "roundIndex": 0,
-        "delivered": 23,
+        "delivered": 95,
         "missed": 0,
-        "count": 23,
-        "averageMs": 163.7,
-        "p50Ms": 163.5,
-        "p95Ms": 166.1,
-        "maxMs": 170.9,
+        "count": 95,
+        "averageMs": 136.6,
+        "p50Ms": 135,
+        "p95Ms": 145.1,
+        "maxMs": 148,
         "sourceCounts": {
-          "realtime-push": 23
+          "realtime-push": 94,
+          "subscribe-recovery": 1
         }
       },
       {
         "action": "lock",
         "phase": "answers_locked",
         "roundIndex": 0,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 216.9,
-        "p50Ms": 210.9,
-        "p95Ms": 257.7,
-        "maxMs": 257.8,
+        "count": 100,
+        "averageMs": 184.8,
+        "p50Ms": 182,
+        "p95Ms": 190.5,
+        "maxMs": 286.8,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "reveal",
         "phase": "employee_revealed",
         "roundIndex": 0,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 154.2,
-        "p50Ms": 153.4,
-        "p95Ms": 164.1,
-        "maxMs": 164.8,
+        "count": 100,
+        "averageMs": 147.5,
+        "p50Ms": 146.6,
+        "p95Ms": 173.2,
+        "maxMs": 226.7,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "show_results",
         "phase": "results_displayed",
         "roundIndex": 0,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 137,
-        "p50Ms": 136.8,
-        "p95Ms": 140.3,
-        "maxMs": 140.4,
+        "count": 100,
+        "averageMs": 830.7,
+        "p50Ms": 830.3,
+        "p95Ms": 834.4,
+        "maxMs": 840.7,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         },
         "answerTotals": [
-          25
+          97
         ]
       },
       {
         "action": "show_leaderboard",
         "phase": "leaderboard_displayed",
         "roundIndex": 0,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 510.3,
-        "p50Ms": 510.5,
-        "p95Ms": 512,
-        "maxMs": 512.2,
+        "count": 100,
+        "averageMs": 221,
+        "p50Ms": 222.3,
+        "p95Ms": 225.6,
+        "maxMs": 229,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "next_round",
         "phase": "question_open",
         "roundIndex": 1,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 137.9,
-        "p50Ms": 137.9,
-        "p95Ms": 138.4,
-        "maxMs": 138.5,
+        "count": 100,
+        "averageMs": 211.4,
+        "p50Ms": 209.9,
+        "p95Ms": 219.4,
+        "maxMs": 278.3,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "lock",
         "phase": "answers_locked",
         "roundIndex": 1,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 132.6,
-        "p50Ms": 131.7,
-        "p95Ms": 137.3,
-        "maxMs": 139.3,
+        "count": 100,
+        "averageMs": 292.1,
+        "p50Ms": 291.2,
+        "p95Ms": 302.6,
+        "maxMs": 311.9,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "reveal",
         "phase": "employee_revealed",
         "roundIndex": 1,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 153.1,
-        "p50Ms": 153.4,
-        "p95Ms": 161.2,
-        "maxMs": 162.3,
+        "count": 100,
+        "averageMs": 271.1,
+        "p50Ms": 270.3,
+        "p95Ms": 289.7,
+        "maxMs": 311.6,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "show_results",
         "phase": "results_displayed",
         "roundIndex": 1,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 295.5,
-        "p50Ms": 294.9,
-        "p95Ms": 299.5,
-        "maxMs": 300.3,
+        "count": 100,
+        "averageMs": 2720.1,
+        "p50Ms": 2720.1,
+        "p95Ms": 2723.1,
+        "maxMs": 2742.4,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         },
         "answerTotals": [
-          25
+          100
         ]
       },
       {
         "action": "next_round",
         "phase": "question_open",
         "roundIndex": 2,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 109.4,
-        "p50Ms": 109.1,
-        "p95Ms": 112,
-        "maxMs": 112.1,
+        "count": 100,
+        "averageMs": 127.9,
+        "p50Ms": 125.6,
+        "p95Ms": 130.3,
+        "maxMs": 242,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "lock",
         "phase": "answers_locked",
         "roundIndex": 2,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 149.6,
-        "p50Ms": 149.1,
-        "p95Ms": 152.4,
-        "maxMs": 167.5,
+        "count": 100,
+        "averageMs": 368.2,
+        "p50Ms": 368.9,
+        "p95Ms": 370.4,
+        "maxMs": 376,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "reveal",
         "phase": "employee_revealed",
         "roundIndex": 2,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 122.2,
-        "p50Ms": 121.7,
-        "p95Ms": 129.5,
-        "maxMs": 130.1,
+        "count": 100,
+        "averageMs": 215.4,
+        "p50Ms": 215,
+        "p95Ms": 239.5,
+        "maxMs": 253.3,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "show_results",
         "phase": "results_displayed",
         "roundIndex": 2,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 127.3,
-        "p50Ms": 126.7,
-        "p95Ms": 128.6,
-        "maxMs": 128.7,
+        "count": 100,
+        "averageMs": 656.1,
+        "p50Ms": 657.5,
+        "p95Ms": 661.5,
+        "maxMs": 683.5,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         },
         "answerTotals": [
-          25
+          100
         ]
       },
       {
         "action": "show_leaderboard",
         "phase": "leaderboard_displayed",
         "roundIndex": 2,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 432.9,
-        "p50Ms": 431.5,
-        "p95Ms": 434.9,
-        "maxMs": 452.7,
+        "count": 100,
+        "averageMs": 2469.9,
+        "p50Ms": 2470.5,
+        "p95Ms": 2474.5,
+        "maxMs": 2478.5,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       },
       {
         "action": "end",
         "phase": "complete",
         "roundIndex": 2,
-        "delivered": 25,
+        "delivered": 100,
         "missed": 0,
-        "count": 25,
-        "averageMs": 117.3,
-        "p50Ms": 116.7,
-        "p95Ms": 121.5,
-        "maxMs": 126,
+        "count": 100,
+        "averageMs": 341.8,
+        "p50Ms": 341.1,
+        "p95Ms": 348.1,
+        "maxMs": 359.3,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 100
         }
       }
     ],
     "reconnect": {
-      "attempted": 3,
-      "successful": 3,
+      "attempted": 10,
+      "successful": 10,
       "failed": 0,
-      "identityRecovered": 3,
-      "idempotentResubmits": 3
+      "identityRecovered": 10,
+      "idempotentResubmits": 10
     },
     "capacityBoundary": {
       "attempted": 0,
@@ -514,39 +515,39 @@
     "answerLockRace": [
       {
         "roundIndex": 0,
-        "clients": 2,
+        "clients": 5,
         "accepted": 2,
-        "answersClosed": 0,
+        "answersClosed": 3,
         "unexpected": 0,
-        "lockTransitionLatencyMs": 274.9
+        "lockTransitionLatencyMs": 312.4
       }
     ],
     "snapshots": {
-      "successful": 166,
+      "successful": 910,
       "failed": 0
     },
     "httpRequests": {
-      "total": 351,
-      "pagesFunctions": 317,
+      "total": 1526,
+      "pagesFunctions": 1492,
       "supabaseClientHttp": 14,
       "supabaseHostRest": 15,
       "cleanup": 5
     },
-    "approximateRealtimeEventVolume": 373,
+    "approximateRealtimeEventVolume": 1495,
     "errorsByCategory": {},
-    "durationMs": 62356,
+    "durationMs": 80386,
     "loadGenerator": {
-      "peakRssBytes": 101183488,
-      "peakHeapUsedBytes": 20866224,
+      "peakRssBytes": 172945408,
+      "peakHeapUsedBytes": 46692464,
       "eventLoopDelay": {
-        "meanMs": 30.4,
-        "p95Ms": 32,
-        "maxMs": 35.3
+        "meanMs": 28.7,
+        "p95Ms": 32.4,
+        "maxMs": 112.4
       },
       "cpu": {
-        "userMs": 172,
-        "systemMs": 15,
-        "singleCoreUtilizationPercent": 0.3
+        "userMs": 750,
+        "systemMs": 110,
+        "singleCoreUtilizationPercent": 1.1
       },
       "thresholds": {
         "eventLoopP95Ms": 100,

@@ -1,10 +1,32 @@
 # 175-person capacity checkpoint
 
-> Scoring renewal notice: the historical evidence below remains valid for the pre-scoring deployment, but it does not certify the modified scoring answer path. The scoring release must pass fresh ordered 5, 25, 100, 175, and 225 stages. Append its deployed commit, deployment ID, score-ledger and leaderboard integrity, answer/personal-hydration latency, Realtime delivery, database observations, and browser/preload evidence without replacing this history.
+> The scoring renewal passed on 2026-08-13. The original pre-scoring checkpoint remains below and under `capacity-results/pre-scoring-baseline-2026-08-13/`; the first scoring run that exposed the latency regression remains under `capacity-results/scoring-before-index-tuning-2026-08-13/`. The current top-level 5/25/100/175/225 reports are the tuned scoring release evidence.
 
 ## Release conclusion
 
-**PASS.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. All staged protocol runs, including the first full 225-participant rehearsal with real host/display browsers, passed and cleaned up exactly. The complete 11-journey production browser gauntlet also passed after honoring the image-upload limiter's `Retry-After` window. Cloudflare GraphQL CPU quantiles remain unavailable to the configured token, but the actual worst tested endpoint mix produced no server/resource-limit response and consumed only 1.671% of the documented 100,000-request/day Workers Free floor. An independent final critic accepted that measured conservative evidence; the missing analytics permission is not a release blocker for one normal event.
+**PASS.** The product target is 175 simultaneous real participants. The engineering envelope is 225 participant clients plus one host and one shared display. The scoring-enabled answer path passed fresh ordered 5, 25, 100, 175, and 225 stages, exact score-ledger and rank oracles, the 226th-participant rejection, Realtime/reconnect gates, production browser acceptance, and preload timing. Every isolated room and the shared tiny fixture were removed. Cloudflare GraphQL CPU quantiles remain unavailable to the configured token; retain the conservative one-normal-event/day operational caveat from the prior checkpoint.
+
+## Scoring renewal checkpoint — 2026-08-13
+
+The final release targets Git commit `c3bea99dd14a1b83be8cd2b74ae0a11cf4f82803`, Cloudflare deployment `a78291a2-1e77-4b01-8237-b460e2115f45`, and `https://name-that-team-member.pages.dev`. Production served `index-FPqJcSgv.js`; `/api/health` returned 200; migration `202608110022` was present in the production ledger.
+
+The first scoring ladder was correct but materially slower than the pre-scoring answer baseline. That evidence is preserved rather than overwritten. Investigation identified a wide leaderboard index whose sort columns changed on every accepted answer and repeated full-room window ranking in each personalized hydration. Migrations 021 and 022 removed the write-amplifying index, retained the room lookup index, and materialized deterministic ranks once per Leaderboard transition. The participant client/harness also stopped making redundant Complete/Leaderboard personalized reads. No cache service or alternate authority was introduced.
+
+| Clients | Answer p95 | First scoring p95 | Personal hydration p95 | Exact points | Rank checks | Pages calls | Realtime deliveries | Result |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 5 | 287.2 ms | 230.7 ms | 291.2 ms | 6,818 | 10 | 69 | 74 | **PASS** |
+| 25 | 182.2 ms | 175.4 ms | 675.2 ms | 32,766 | 50 | 317 | 373 | **PASS** |
+| 100 | 246.4 ms | 656.4 ms | 2,492.9 ms | 130,946 | 200 | 1,165 | 1,495 | **PASS** |
+| 175 | 1,173.4 ms | 1,810.1 ms | 4,210.3 ms | 227,348 | 350 | 2,167 | 2,616 | **PASS** |
+| 225 | 2,476.4 ms | 3,082.7 ms | 6,524.3 ms | 287,534 | 450 | 2,751 | 3,363 | **PASS** |
+
+At 100 clients, tuned answer p95 is below the 268.7 ms pre-scoring baseline. At 175 and 225 it is respectively 35% and 20% better than the first scoring run, though still 77% and 28% above the pre-scoring answer baseline because scoring adds an authoritative ledger/aggregate update. Personalized hydration has no pre-scoring equivalent: it returns private feedback/rank after Reveal/Leaderboard and is deliberately outside the voting acknowledgement path. Its 4.21 s/6.52 s p95 at 175/225 is an operational latency caveat, not hidden as a baseline regression. One 175-client Leaderboard transition reached 3.14 s p95. All personalized rank checks completed within the harness timeout without missed state.
+
+Across the tuned ladder, every expected score matched the independent answer-ledger oracle, leaderboard mismatches were zero, snapshot failures/channel errors/same-phase events were zero, and reconnect recovery was 1/1, 3/3, 10/10, 18/18, and 23/23. The 225 run accepted 670 answers and correctly classified five deliberate answer-vs-Lock losses as `ANSWERS_CLOSED`; the 226th join returned `ROOM_FULL`. Peak topology was one channel on each of 225 sockets. The load generator remained healthy (223.9 MiB RSS, 32.4 ms event-loop p95), and exact room plus batch fixture cleanup passed.
+
+A post-run read-only database observation found 20 connections, zero lock waiters, zero cumulative deadlocks, and no remaining capacity rooms. Sixteen connections were idle `ClientRead`; the other wait events were replication/extension activity, not lock contention. The removed leaderboard index was absent and the room lookup index remained. This was a post-run observation, not a fabricated continuous pool trace.
+
+The deployed 11-journey Chrome gauntlet passed. Scoring-specific image timings were 187 ms display Reveal click-to-paint, 187 ms participant Reveal click-to-paint, and 192 ms Leaderboard-to-next-Mystery, all below 500 ms. Network assertions proved one fetch for each prepared next-round Mystery/encrypted Reveal, no duplicate fetch through a held Leaderboard, no plaintext Reveal fallback, and per-session crypto isolation. Independent security, preload, deployed visual/mobile/host, and final adversarial critics passed.
 
 ## Read-only production audit — 2026-08-13
 

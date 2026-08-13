@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "runId": "fe19ec36",
-  "startedAt": "2026-08-13T23:35:39.587Z",
-  "finishedAt": "2026-08-13T23:36:41.943Z",
+  "runId": "f3ec526a",
+  "startedAt": "2026-08-13T22:50:29.708Z",
+  "finishedAt": "2026-08-13T22:51:33.324Z",
   "environment": {
     "origin": "https://name-that-team-member.pages.dev",
     "hostname": "name-that-team-member.pages.dev",
-    "gameId": "865e20c5-7fa6-4e30-a9b1-44eb378a3f15",
-    "operatorRecordedGitCommit": "c3bea99dd14a1b83be8cd2b74ae0a11cf4f82803",
-    "operatorRecordedDeploymentId": "a78291a2-1e77-4b01-8237-b460e2115f45",
+    "gameId": "4498b6b0-41cb-480b-8969-bd06b917c853",
+    "operatorRecordedGitCommit": "3b2e038da48fc05ff7d8de7731d041fd1d5866e7",
+    "operatorRecordedDeploymentId": "52910ec6-fa2e-443a-b26f-c46609acb061",
     "deploymentIdentityVerification": "Operator supplied; correlate both values with the Cloudflare deployment dashboard before accepting the report."
   },
   "configuration": {
@@ -103,56 +103,56 @@
     },
     "joinLatency": {
       "count": 25,
-      "averageMs": 155.4,
-      "p50Ms": 145.8,
-      "p95Ms": 195,
-      "maxMs": 201.6
+      "averageMs": 193.3,
+      "p50Ms": 174.5,
+      "p95Ms": 320.6,
+      "maxMs": 358
     },
     "participantReadyLatency": {
       "count": 25,
-      "averageMs": 457.7,
-      "p50Ms": 446.9,
-      "p95Ms": 590.2,
-      "maxMs": 595.7
+      "averageMs": 520.4,
+      "p50Ms": 471.1,
+      "p95Ms": 747.5,
+      "maxMs": 792.1
     },
     "answerLatency": {
       "count": 75,
-      "averageMs": 149.1,
-      "p50Ms": 143.9,
-      "p95Ms": 182.2,
-      "maxMs": 294.3
+      "averageMs": 136.5,
+      "p50Ms": 129.5,
+      "p95Ms": 175.4,
+      "maxMs": 274.4
     },
     "personalHydrationLatency": {
-      "count": 126,
-      "averageMs": 418.8,
-      "p50Ms": 458.6,
-      "p95Ms": 675.2,
-      "maxMs": 704.2
+      "count": 199,
+      "averageMs": 435.3,
+      "p50Ms": 472.4,
+      "p95Ms": 623.6,
+      "maxMs": 862.3
     },
     "scoring": {
       "rounds": [
         {
           "roundIndex": 0,
           "acceptedAnswers": 25,
-          "expectedPoints": 13385,
-          "actualPoints": 13385
+          "expectedPoints": 13391,
+          "actualPoints": 13391
         },
         {
           "roundIndex": 1,
           "acceptedAnswers": 25,
-          "expectedPoints": 4856,
-          "actualPoints": 4856
+          "expectedPoints": 4860,
+          "actualPoints": 4860
         },
         {
           "roundIndex": 2,
           "acceptedAnswers": 25,
-          "expectedPoints": 14525,
-          "actualPoints": 14525
+          "expectedPoints": 14523,
+          "actualPoints": 14523
         }
       ],
       "ledgerRows": 75,
-      "expectedTotalPoints": 32766,
-      "actualTotalPoints": 32766,
+      "expectedTotalPoints": 32774,
+      "actualTotalPoints": 32774,
       "mismatches": 0
     },
     "leaderboard": {
@@ -163,31 +163,31 @@
           "entries": [
             {
               "rank": 1,
-              "displayName": "Capacity fe19ec36 Chris",
-              "totalScore": 927,
+              "displayName": "Capacity f3ec526a Chris",
+              "totalScore": 928,
               "correctAnswers": 1
             },
             {
               "rank": 2,
-              "displayName": "Capacity fe19ec36 Chris",
+              "displayName": "Capacity f3ec526a Chris",
               "totalScore": 925,
               "correctAnswers": 1
             },
             {
               "rank": 3,
-              "displayName": "Capacity fe19ec36 004",
+              "displayName": "Capacity f3ec526a 004",
               "totalScore": 919,
               "correctAnswers": 1
             },
             {
               "rank": 4,
-              "displayName": "Capacity fe19ec36 006",
-              "totalScore": 913,
+              "displayName": "Capacity f3ec526a 006",
+              "totalScore": 914,
               "correctAnswers": 1
             },
             {
               "rank": 5,
-              "displayName": "Capacity fe19ec36 007",
+              "displayName": "Capacity f3ec526a 007",
               "totalScore": 911,
               "correctAnswers": 1
             }
@@ -199,62 +199,62 @@
           "entries": [
             {
               "rank": 1,
-              "displayName": "Capacity fe19ec36 Chris",
-              "totalScore": 2922,
+              "displayName": "Capacity f3ec526a Chris",
+              "totalScore": 2924,
               "correctAnswers": 3
             },
             {
               "rank": 2,
-              "displayName": "Capacity fe19ec36 006",
-              "totalScore": 2882,
+              "displayName": "Capacity f3ec526a 006",
+              "totalScore": 2884,
               "correctAnswers": 3
             },
             {
               "rank": 3,
-              "displayName": "Capacity fe19ec36 011",
-              "totalScore": 2842,
+              "displayName": "Capacity f3ec526a 011",
+              "totalScore": 2843,
               "correctAnswers": 3
             },
             {
               "rank": 4,
-              "displayName": "Capacity fe19ec36 016",
+              "displayName": "Capacity f3ec526a 016",
               "totalScore": 2802,
               "correctAnswers": 3
             },
             {
               "rank": 5,
-              "displayName": "Capacity fe19ec36 021",
-              "totalScore": 2762,
+              "displayName": "Capacity f3ec526a 021",
+              "totalScore": 2763,
               "correctAnswers": 3
             },
             {
               "rank": 6,
-              "displayName": "Capacity fe19ec36 Chris",
+              "displayName": "Capacity f3ec526a Chris",
               "totalScore": 1920,
               "correctAnswers": 2
             },
             {
               "rank": 7,
-              "displayName": "Capacity fe19ec36 004",
+              "displayName": "Capacity f3ec526a 004",
               "totalScore": 1909,
               "correctAnswers": 2
             },
             {
               "rank": 8,
-              "displayName": "Capacity fe19ec36 007",
+              "displayName": "Capacity f3ec526a 007",
               "totalScore": 1893,
               "correctAnswers": 2
             },
             {
               "rank": 9,
-              "displayName": "Capacity fe19ec36 009",
-              "totalScore": 1882,
+              "displayName": "Capacity f3ec526a 009",
+              "totalScore": 1883,
               "correctAnswers": 2
             },
             {
               "rank": 10,
-              "displayName": "Capacity fe19ec36 012",
-              "totalScore": 1865,
+              "displayName": "Capacity f3ec526a 012",
+              "totalScore": 1866,
               "correctAnswers": 2
             }
           ]
@@ -271,10 +271,10 @@
         "delivered": 23,
         "missed": 0,
         "count": 23,
-        "averageMs": 163.7,
-        "p50Ms": 163.5,
-        "p95Ms": 166.1,
-        "maxMs": 170.9,
+        "averageMs": 184.3,
+        "p50Ms": 183.3,
+        "p95Ms": 187.8,
+        "maxMs": 190.3,
         "sourceCounts": {
           "realtime-push": 23
         }
@@ -286,10 +286,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 216.9,
-        "p50Ms": 210.9,
-        "p95Ms": 257.7,
-        "maxMs": 257.8,
+        "averageMs": 217.2,
+        "p50Ms": 216.9,
+        "p95Ms": 218,
+        "maxMs": 218.1,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -301,10 +301,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 154.2,
-        "p50Ms": 153.4,
-        "p95Ms": 164.1,
-        "maxMs": 164.8,
+        "averageMs": 117.8,
+        "p50Ms": 117.9,
+        "p95Ms": 126.3,
+        "maxMs": 126.9,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -316,10 +316,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 137,
-        "p50Ms": 136.8,
-        "p95Ms": 140.3,
-        "maxMs": 140.4,
+        "averageMs": 180.9,
+        "p50Ms": 179.4,
+        "p95Ms": 186.1,
+        "maxMs": 198.4,
         "sourceCounts": {
           "realtime-push": 25
         },
@@ -334,10 +334,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 510.3,
-        "p50Ms": 510.5,
-        "p95Ms": 512,
-        "maxMs": 512.2,
+        "averageMs": 176.5,
+        "p50Ms": 176.4,
+        "p95Ms": 177.6,
+        "maxMs": 179.7,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -349,10 +349,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 137.9,
-        "p50Ms": 137.9,
-        "p95Ms": 138.4,
-        "maxMs": 138.5,
+        "averageMs": 101.9,
+        "p50Ms": 99.8,
+        "p95Ms": 108.6,
+        "maxMs": 115.8,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -364,10 +364,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 132.6,
-        "p50Ms": 131.7,
-        "p95Ms": 137.3,
-        "maxMs": 139.3,
+        "averageMs": 137.5,
+        "p50Ms": 136.3,
+        "p95Ms": 144.3,
+        "maxMs": 144.4,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -379,10 +379,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 153.1,
-        "p50Ms": 153.4,
-        "p95Ms": 161.2,
-        "maxMs": 162.3,
+        "averageMs": 136.5,
+        "p50Ms": 136,
+        "p95Ms": 144.8,
+        "maxMs": 145.4,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -394,10 +394,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 295.5,
-        "p50Ms": 294.9,
-        "p95Ms": 299.5,
-        "maxMs": 300.3,
+        "averageMs": 108.8,
+        "p50Ms": 108.3,
+        "p95Ms": 111.6,
+        "maxMs": 115.1,
         "sourceCounts": {
           "realtime-push": 25
         },
@@ -412,10 +412,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 109.4,
-        "p50Ms": 109.1,
-        "p95Ms": 112,
-        "maxMs": 112.1,
+        "averageMs": 109.5,
+        "p50Ms": 107.9,
+        "p95Ms": 114.2,
+        "maxMs": 134.6,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -427,10 +427,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 149.6,
-        "p50Ms": 149.1,
-        "p95Ms": 152.4,
-        "maxMs": 167.5,
+        "averageMs": 151.1,
+        "p50Ms": 151,
+        "p95Ms": 155.1,
+        "maxMs": 155.8,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -442,10 +442,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 122.2,
-        "p50Ms": 121.7,
-        "p95Ms": 129.5,
-        "maxMs": 130.1,
+        "averageMs": 147.5,
+        "p50Ms": 147.4,
+        "p95Ms": 156.3,
+        "maxMs": 167.6,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -457,10 +457,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 127.3,
-        "p50Ms": 126.7,
-        "p95Ms": 128.6,
-        "maxMs": 128.7,
+        "averageMs": 331.7,
+        "p50Ms": 330,
+        "p95Ms": 340.1,
+        "maxMs": 343.2,
         "sourceCounts": {
           "realtime-push": 25
         },
@@ -475,12 +475,13 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 432.9,
-        "p50Ms": 431.5,
-        "p95Ms": 434.9,
-        "maxMs": 452.7,
+        "averageMs": 162.3,
+        "p50Ms": 164.6,
+        "p95Ms": 166.4,
+        "maxMs": 167.1,
         "sourceCounts": {
-          "realtime-push": 25
+          "realtime-push": 24,
+          "personalized-transition": 1
         }
       },
       {
@@ -490,10 +491,10 @@
         "delivered": 25,
         "missed": 0,
         "count": 25,
-        "averageMs": 117.3,
-        "p50Ms": 116.7,
-        "p95Ms": 121.5,
-        "maxMs": 126,
+        "averageMs": 103.6,
+        "p50Ms": 102.8,
+        "p95Ms": 106.6,
+        "maxMs": 122.3,
         "sourceCounts": {
           "realtime-push": 25
         }
@@ -518,35 +519,35 @@
         "accepted": 2,
         "answersClosed": 0,
         "unexpected": 0,
-        "lockTransitionLatencyMs": 274.9
+        "lockTransitionLatencyMs": 228.1
       }
     ],
     "snapshots": {
-      "successful": 166,
+      "successful": 235,
       "failed": 0
     },
     "httpRequests": {
-      "total": 351,
-      "pagesFunctions": 317,
+      "total": 420,
+      "pagesFunctions": 386,
       "supabaseClientHttp": 14,
       "supabaseHostRest": 15,
       "cleanup": 5
     },
     "approximateRealtimeEventVolume": 373,
     "errorsByCategory": {},
-    "durationMs": 62356,
+    "durationMs": 63616,
     "loadGenerator": {
-      "peakRssBytes": 101183488,
-      "peakHeapUsedBytes": 20866224,
+      "peakRssBytes": 102555648,
+      "peakHeapUsedBytes": 21656552,
       "eventLoopDelay": {
         "meanMs": 30.4,
-        "p95Ms": 32,
-        "maxMs": 35.3
+        "p95Ms": 32.1,
+        "maxMs": 35.8
       },
       "cpu": {
-        "userMs": 172,
-        "systemMs": 15,
-        "singleCoreUtilizationPercent": 0.3
+        "userMs": 219,
+        "systemMs": 16,
+        "singleCoreUtilizationPercent": 0.4
       },
       "thresholds": {
         "eventLoopP95Ms": 100,

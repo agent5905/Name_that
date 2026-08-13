@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "runId": "8426f6b7",
-  "startedAt": "2026-08-13T23:35:12.123Z",
-  "finishedAt": "2026-08-13T23:35:39.434Z",
+  "runId": "4c0f7875",
+  "startedAt": "2026-08-13T22:39:54.660Z",
+  "finishedAt": "2026-08-13T22:40:23.267Z",
   "environment": {
     "origin": "https://name-that-team-member.pages.dev",
     "hostname": "name-that-team-member.pages.dev",
-    "gameId": "865e20c5-7fa6-4e30-a9b1-44eb378a3f15",
-    "operatorRecordedGitCommit": "c3bea99dd14a1b83be8cd2b74ae0a11cf4f82803",
-    "operatorRecordedDeploymentId": "a78291a2-1e77-4b01-8237-b460e2115f45",
+    "gameId": "8f1e9499-5784-48d9-8801-4e7929fdff9b",
+    "operatorRecordedGitCommit": "85ca77310d8f11937c730dbe76d104dec9fe1422",
+    "operatorRecordedDeploymentId": "db24839d-aff2-41a6-9a98-f94da7fb4fdc",
     "deploymentIdentityVerification": "Operator supplied; correlate both values with the Cloudflare deployment dashboard before accepting the report."
   },
   "configuration": {
@@ -79,7 +79,7 @@
     "realtime": {
       "subscribed": 0,
       "peakSubscribed": 5,
-      "inboundEvents": 74,
+      "inboundEvents": 69,
       "samePhaseEvents": 0,
       "samePhaseSamples": [],
       "invalidEvents": 0,
@@ -103,56 +103,50 @@
     },
     "joinLatency": {
       "count": 5,
-      "averageMs": 160.8,
-      "p50Ms": 168.8,
-      "p95Ms": 172.4,
-      "maxMs": 172.4
+      "averageMs": 169.9,
+      "p50Ms": 159,
+      "p95Ms": 219.4,
+      "maxMs": 219.4
     },
     "participantReadyLatency": {
       "count": 5,
-      "averageMs": 623.6,
-      "p50Ms": 631.1,
-      "p95Ms": 1048.9,
-      "maxMs": 1048.9
+      "averageMs": 498.6,
+      "p50Ms": 477.4,
+      "p95Ms": 637.8,
+      "maxMs": 637.8
     },
     "answerLatency": {
       "count": 15,
-      "averageMs": 173.8,
-      "p50Ms": 153.8,
-      "p95Ms": 287.2,
-      "maxMs": 287.2
+      "averageMs": 180.1,
+      "p50Ms": 161.9,
+      "p95Ms": 346.7,
+      "maxMs": 346.7
     },
     "personalHydrationLatency": {
-      "count": 25,
-      "averageMs": 199,
-      "p50Ms": 207.5,
-      "p95Ms": 291.2,
-      "maxMs": 355.4
+      "count": 16,
+      "averageMs": 311.4,
+      "p50Ms": 288.9,
+      "p95Ms": 439.6,
+      "maxMs": 439.6
     },
     "scoring": {
       "rounds": [
         {
           "roundIndex": 0,
           "acceptedAnswers": 5,
-          "expectedPoints": 2891,
-          "actualPoints": 2891
+          "expectedPoints": 3763,
+          "actualPoints": 3763
         },
         {
           "roundIndex": 1,
           "acceptedAnswers": 5,
-          "expectedPoints": 998,
-          "actualPoints": 998
-        },
-        {
-          "roundIndex": 2,
-          "acceptedAnswers": 5,
-          "expectedPoints": 2929,
-          "actualPoints": 2929
+          "expectedPoints": 997,
+          "actualPoints": 997
         }
       ],
-      "ledgerRows": 15,
-      "expectedTotalPoints": 6818,
-      "actualTotalPoints": 6818,
+      "ledgerRows": 10,
+      "expectedTotalPoints": 4760,
+      "actualTotalPoints": 4760,
       "mismatches": 0
     },
     "leaderboard": {
@@ -163,75 +157,39 @@
           "entries": [
             {
               "rank": 1,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 991,
+              "totalScore": 990,
+              "displayName": "Capacity 4c0f7875 Chris",
               "correctAnswers": 1
             },
             {
               "rank": 2,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 970,
+              "totalScore": 969,
+              "displayName": "Capacity 4c0f7875 Chris",
               "correctAnswers": 1
             },
             {
               "rank": 3,
-              "displayName": "Capacity 8426f6b7 004",
-              "totalScore": 930,
+              "totalScore": 927,
+              "displayName": "Capacity 4c0f7875 004",
               "correctAnswers": 1
             },
             {
               "rank": 4,
-              "displayName": "Capacity 8426f6b7 003",
-              "totalScore": 0,
-              "correctAnswers": 0
+              "totalScore": 877,
+              "displayName": "Capacity 4c0f7875 005",
+              "correctAnswers": 1
             },
             {
               "rank": 5,
-              "displayName": "Capacity 8426f6b7 005",
               "totalScore": 0,
-              "correctAnswers": 0
-            }
-          ]
-        },
-        {
-          "roundIndex": 2,
-          "isFinal": true,
-          "entries": [
-            {
-              "rank": 1,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 2986,
-              "correctAnswers": 3
-            },
-            {
-              "rank": 2,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 1952,
-              "correctAnswers": 2
-            },
-            {
-              "rank": 3,
-              "displayName": "Capacity 8426f6b7 004",
-              "totalScore": 1880,
-              "correctAnswers": 2
-            },
-            {
-              "rank": 4,
-              "displayName": "Capacity 8426f6b7 003",
-              "totalScore": 0,
-              "correctAnswers": 0
-            },
-            {
-              "rank": 5,
-              "displayName": "Capacity 8426f6b7 005",
-              "totalScore": 0,
+              "displayName": "Capacity 4c0f7875 003",
               "correctAnswers": 0
             }
           ]
         }
       ],
-      "personalRankChecks": 10,
-      "mismatches": 0
+      "personalRankChecks": 5,
+      "mismatches": 1
     },
     "transitions": [
       {
@@ -241,10 +199,10 @@
         "delivered": 4,
         "missed": 0,
         "count": 4,
-        "averageMs": 158.7,
-        "p50Ms": 158.9,
-        "p95Ms": 161.9,
-        "maxMs": 161.9,
+        "averageMs": 195.2,
+        "p50Ms": 193.6,
+        "p95Ms": 198.9,
+        "maxMs": 198.9,
         "sourceCounts": {
           "realtime-push": 4
         }
@@ -256,10 +214,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 174.8,
-        "p50Ms": 174.8,
-        "p95Ms": 178.1,
-        "maxMs": 178.1,
+        "averageMs": 153,
+        "p50Ms": 153,
+        "p95Ms": 155.1,
+        "maxMs": 155.1,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -271,10 +229,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 130,
-        "p50Ms": 130.8,
-        "p95Ms": 132.2,
-        "maxMs": 132.2,
+        "averageMs": 116.7,
+        "p50Ms": 116.6,
+        "p95Ms": 118.6,
+        "maxMs": 118.6,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -286,10 +244,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 112.7,
-        "p50Ms": 112.7,
-        "p95Ms": 115,
-        "maxMs": 115,
+        "averageMs": 121.1,
+        "p50Ms": 120.9,
+        "p95Ms": 132.5,
+        "maxMs": 132.5,
         "sourceCounts": {
           "realtime-push": 5
         },
@@ -305,9 +263,9 @@
         "missed": 0,
         "count": 5,
         "averageMs": 126.5,
-        "p50Ms": 126.6,
-        "p95Ms": 127.4,
-        "maxMs": 127.4,
+        "p50Ms": 119.5,
+        "p95Ms": 142.1,
+        "maxMs": 142.1,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -319,10 +277,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 104,
-        "p50Ms": 103.7,
-        "p95Ms": 105.9,
-        "maxMs": 105.9,
+        "averageMs": 129.7,
+        "p50Ms": 128.4,
+        "p95Ms": 136.5,
+        "maxMs": 136.5,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -334,10 +292,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 179,
-        "p50Ms": 179.1,
-        "p95Ms": 179.2,
-        "maxMs": 179.2,
+        "averageMs": 217.9,
+        "p50Ms": 216.4,
+        "p95Ms": 221,
+        "maxMs": 221,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -349,10 +307,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 116.1,
-        "p50Ms": 115.8,
-        "p95Ms": 119.2,
-        "maxMs": 119.2,
+        "averageMs": 125.4,
+        "p50Ms": 125,
+        "p95Ms": 128,
+        "maxMs": 128,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -364,10 +322,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 94.5,
-        "p50Ms": 94.3,
-        "p95Ms": 95.5,
-        "maxMs": 95.5,
+        "averageMs": 138.6,
+        "p50Ms": 110.1,
+        "p95Ms": 186.2,
+        "maxMs": 186.2,
         "sourceCounts": {
           "realtime-push": 5
         },
@@ -382,10 +340,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 108.3,
-        "p50Ms": 108,
-        "p95Ms": 109.2,
-        "maxMs": 109.2,
+        "averageMs": 136.9,
+        "p50Ms": 136.3,
+        "p95Ms": 137.9,
+        "maxMs": 137.9,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -397,10 +355,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 131.1,
-        "p50Ms": 131.7,
-        "p95Ms": 131.8,
-        "maxMs": 131.8,
+        "averageMs": 159.3,
+        "p50Ms": 154.7,
+        "p95Ms": 168.5,
+        "maxMs": 168.5,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -412,10 +370,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 106.8,
-        "p50Ms": 106.8,
-        "p95Ms": 108.1,
-        "maxMs": 108.1,
+        "averageMs": 129.1,
+        "p50Ms": 128.8,
+        "p95Ms": 131.1,
+        "maxMs": 131.1,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -427,10 +385,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 94.5,
-        "p50Ms": 94.7,
-        "p95Ms": 95.3,
-        "maxMs": 95.3,
+        "averageMs": 109.4,
+        "p50Ms": 109.1,
+        "p95Ms": 110.7,
+        "maxMs": 110.7,
         "sourceCounts": {
           "realtime-push": 5
         },
@@ -445,25 +403,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 116.6,
-        "p50Ms": 116.9,
-        "p95Ms": 117.2,
-        "maxMs": 117.2,
-        "sourceCounts": {
-          "realtime-push": 5
-        }
-      },
-      {
-        "action": "end",
-        "phase": "complete",
-        "roundIndex": 2,
-        "delivered": 5,
-        "missed": 0,
-        "count": 5,
-        "averageMs": 109.9,
-        "p50Ms": 109.5,
-        "p95Ms": 111.8,
-        "maxMs": 111.8,
+        "averageMs": 128.1,
+        "p50Ms": 129.7,
+        "p95Ms": 130,
+        "maxMs": 130,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -488,35 +431,38 @@
         "accepted": 1,
         "answersClosed": 0,
         "unexpected": 0,
-        "lockTransitionLatencyMs": 203.3
+        "lockTransitionLatencyMs": 184.2
       }
     ],
     "snapshots": {
-      "successful": 34,
-      "failed": 0
+      "successful": 25,
+      "failed": 7
     },
     "httpRequests": {
-      "total": 103,
-      "pagesFunctions": 69,
+      "total": 100,
+      "pagesFunctions": 67,
       "supabaseClientHttp": 14,
-      "supabaseHostRest": 15,
+      "supabaseHostRest": 14,
       "cleanup": 5
     },
-    "approximateRealtimeEventVolume": 74,
-    "errorsByCategory": {},
-    "durationMs": 27311,
+    "approximateRealtimeEventVolume": 69,
+    "errorsByCategory": {
+      "INTERNAL_ERROR": 7,
+      "SNAPSHOT_FAILED": 7
+    },
+    "durationMs": 28607,
     "loadGenerator": {
-      "peakRssBytes": 87642112,
-      "peakHeapUsedBytes": 17529176,
+      "peakRssBytes": 87015424,
+      "peakHeapUsedBytes": 17534880,
       "eventLoopDelay": {
-        "meanMs": 30.6,
+        "meanMs": 30.7,
         "p95Ms": 32,
-        "maxMs": 35
+        "maxMs": 34.6
       },
       "cpu": {
-        "userMs": 63,
-        "systemMs": 0,
-        "singleCoreUtilizationPercent": 0.2
+        "userMs": 172,
+        "systemMs": 31,
+        "singleCoreUtilizationPercent": 0.7
       },
       "thresholds": {
         "eventLoopP95Ms": 100,
@@ -540,6 +486,6 @@
     "Duplicate join operations and concurrent duplicate answers are covered here; duplicate-tab UI/socket behavior is covered by the real-browser gauntlet.",
     "Platform dashboard metrics are not inferred; correlate this report with Supabase and Cloudflare dashboards."
   ],
-  "pass": true,
-  "failure": null
+  "pass": false,
+  "failure": "Capacity scoring fixture did not prove deterministic zero-score tie ordering."
 }

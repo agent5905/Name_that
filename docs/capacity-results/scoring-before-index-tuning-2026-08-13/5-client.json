@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "runId": "8426f6b7",
-  "startedAt": "2026-08-13T23:35:12.123Z",
-  "finishedAt": "2026-08-13T23:35:39.434Z",
+  "runId": "8c10e278",
+  "startedAt": "2026-08-13T22:47:31.137Z",
+  "finishedAt": "2026-08-13T22:47:59.608Z",
   "environment": {
     "origin": "https://name-that-team-member.pages.dev",
     "hostname": "name-that-team-member.pages.dev",
-    "gameId": "865e20c5-7fa6-4e30-a9b1-44eb378a3f15",
-    "operatorRecordedGitCommit": "c3bea99dd14a1b83be8cd2b74ae0a11cf4f82803",
-    "operatorRecordedDeploymentId": "a78291a2-1e77-4b01-8237-b460e2115f45",
+    "gameId": "36cb74ac-7f47-437a-944b-0c157b240b2e",
+    "operatorRecordedGitCommit": "3b2e038da48fc05ff7d8de7731d041fd1d5866e7",
+    "operatorRecordedDeploymentId": "52910ec6-fa2e-443a-b26f-c46609acb061",
     "deploymentIdentityVerification": "Operator supplied; correlate both values with the Cloudflare deployment dashboard before accepting the report."
   },
   "configuration": {
@@ -89,70 +89,70 @@
     "answers": {
       "logicalAttempted": 15,
       "httpAttempted": 22,
-      "successful": 15,
-      "closedAtLock": 0,
+      "successful": 14,
+      "closedAtLock": 1,
       "failed": 0,
       "idempotentDuplicates": 3,
       "immutableDuplicates": 3,
       "duplicateProbeFailures": 0,
       "acceptedByRound": {
-        "0": 5,
+        "0": 4,
         "1": 5,
         "2": 5
       }
     },
     "joinLatency": {
       "count": 5,
-      "averageMs": 160.8,
-      "p50Ms": 168.8,
-      "p95Ms": 172.4,
-      "maxMs": 172.4
+      "averageMs": 158.3,
+      "p50Ms": 161.1,
+      "p95Ms": 177,
+      "maxMs": 177
     },
     "participantReadyLatency": {
       "count": 5,
-      "averageMs": 623.6,
-      "p50Ms": 631.1,
-      "p95Ms": 1048.9,
-      "maxMs": 1048.9
+      "averageMs": 491.8,
+      "p50Ms": 491.6,
+      "p95Ms": 600.9,
+      "maxMs": 600.9
     },
     "answerLatency": {
-      "count": 15,
-      "averageMs": 173.8,
-      "p50Ms": 153.8,
-      "p95Ms": 287.2,
-      "maxMs": 287.2
+      "count": 14,
+      "averageMs": 174.9,
+      "p50Ms": 162.4,
+      "p95Ms": 230.7,
+      "maxMs": 230.7
     },
     "personalHydrationLatency": {
-      "count": 25,
-      "averageMs": 199,
-      "p50Ms": 207.5,
-      "p95Ms": 291.2,
-      "maxMs": 355.4
+      "count": 40,
+      "averageMs": 206.1,
+      "p50Ms": 209.5,
+      "p95Ms": 287,
+      "maxMs": 341.5
     },
     "scoring": {
       "rounds": [
         {
           "roundIndex": 0,
-          "acceptedAnswers": 5,
-          "expectedPoints": 2891,
-          "actualPoints": 2891
+          "acceptedAnswers": 4,
+          "expectedPoints": 2884,
+          "actualPoints": 2884
         },
         {
           "roundIndex": 1,
           "acceptedAnswers": 5,
-          "expectedPoints": 998,
-          "actualPoints": 998
+          "expectedPoints": 997,
+          "actualPoints": 997
         },
         {
           "roundIndex": 2,
           "acceptedAnswers": 5,
-          "expectedPoints": 2929,
-          "actualPoints": 2929
+          "expectedPoints": 2931,
+          "actualPoints": 2931
         }
       ],
-      "ledgerRows": 15,
-      "expectedTotalPoints": 6818,
-      "actualTotalPoints": 6818,
+      "ledgerRows": 14,
+      "expectedTotalPoints": 6812,
+      "actualTotalPoints": 6812,
       "mismatches": 0
     },
     "leaderboard": {
@@ -163,31 +163,31 @@
           "entries": [
             {
               "rank": 1,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 991,
+              "displayName": "Capacity 8c10e278 Chris",
+              "totalScore": 989,
               "correctAnswers": 1
             },
             {
               "rank": 2,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 970,
+              "displayName": "Capacity 8c10e278 Chris",
+              "totalScore": 968,
               "correctAnswers": 1
             },
             {
               "rank": 3,
-              "displayName": "Capacity 8426f6b7 004",
-              "totalScore": 930,
+              "displayName": "Capacity 8c10e278 004",
+              "totalScore": 927,
               "correctAnswers": 1
             },
             {
               "rank": 4,
-              "displayName": "Capacity 8426f6b7 003",
+              "displayName": "Capacity 8c10e278 003",
               "totalScore": 0,
               "correctAnswers": 0
             },
             {
               "rank": 5,
-              "displayName": "Capacity 8426f6b7 005",
+              "displayName": "Capacity 8c10e278 005",
               "totalScore": 0,
               "correctAnswers": 0
             }
@@ -199,31 +199,31 @@
           "entries": [
             {
               "rank": 1,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 2986,
+              "displayName": "Capacity 8c10e278 Chris",
+              "totalScore": 2984,
               "correctAnswers": 3
             },
             {
               "rank": 2,
-              "displayName": "Capacity 8426f6b7 Chris",
-              "totalScore": 1952,
+              "displayName": "Capacity 8c10e278 Chris",
+              "totalScore": 1950,
               "correctAnswers": 2
             },
             {
               "rank": 3,
-              "displayName": "Capacity 8426f6b7 004",
-              "totalScore": 1880,
+              "displayName": "Capacity 8c10e278 004",
+              "totalScore": 1878,
               "correctAnswers": 2
             },
             {
               "rank": 4,
-              "displayName": "Capacity 8426f6b7 003",
+              "displayName": "Capacity 8c10e278 003",
               "totalScore": 0,
               "correctAnswers": 0
             },
             {
               "rank": 5,
-              "displayName": "Capacity 8426f6b7 005",
+              "displayName": "Capacity 8c10e278 005",
               "totalScore": 0,
               "correctAnswers": 0
             }
@@ -241,10 +241,10 @@
         "delivered": 4,
         "missed": 0,
         "count": 4,
-        "averageMs": 158.7,
-        "p50Ms": 158.9,
-        "p95Ms": 161.9,
-        "maxMs": 161.9,
+        "averageMs": 229.1,
+        "p50Ms": 229.4,
+        "p95Ms": 229.8,
+        "maxMs": 229.8,
         "sourceCounts": {
           "realtime-push": 4
         }
@@ -256,10 +256,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 174.8,
-        "p50Ms": 174.8,
-        "p95Ms": 178.1,
-        "maxMs": 178.1,
+        "averageMs": 171.5,
+        "p50Ms": 148.9,
+        "p95Ms": 263.6,
+        "maxMs": 263.6,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -271,10 +271,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 130,
-        "p50Ms": 130.8,
-        "p95Ms": 132.2,
-        "maxMs": 132.2,
+        "averageMs": 133,
+        "p50Ms": 133,
+        "p95Ms": 134.1,
+        "maxMs": 134.1,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -286,15 +286,15 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 112.7,
-        "p50Ms": 112.7,
-        "p95Ms": 115,
-        "maxMs": 115,
+        "averageMs": 154.4,
+        "p50Ms": 152.7,
+        "p95Ms": 162,
+        "maxMs": 162,
         "sourceCounts": {
           "realtime-push": 5
         },
         "answerTotals": [
-          5
+          4
         ]
       },
       {
@@ -304,10 +304,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 126.5,
-        "p50Ms": 126.6,
-        "p95Ms": 127.4,
-        "maxMs": 127.4,
+        "averageMs": 121.1,
+        "p50Ms": 121.3,
+        "p95Ms": 122.7,
+        "maxMs": 122.7,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -319,10 +319,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 104,
-        "p50Ms": 103.7,
-        "p95Ms": 105.9,
-        "maxMs": 105.9,
+        "averageMs": 116.4,
+        "p50Ms": 116.4,
+        "p95Ms": 116.5,
+        "maxMs": 116.5,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -334,10 +334,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 179,
-        "p50Ms": 179.1,
-        "p95Ms": 179.2,
-        "maxMs": 179.2,
+        "averageMs": 159.3,
+        "p50Ms": 159.3,
+        "p95Ms": 163.5,
+        "maxMs": 163.5,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -349,10 +349,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 116.1,
-        "p50Ms": 115.8,
-        "p95Ms": 119.2,
-        "maxMs": 119.2,
+        "averageMs": 124.1,
+        "p50Ms": 124.5,
+        "p95Ms": 127.9,
+        "maxMs": 127.9,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -364,10 +364,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 94.5,
-        "p50Ms": 94.3,
-        "p95Ms": 95.5,
-        "maxMs": 95.5,
+        "averageMs": 111.7,
+        "p50Ms": 112.4,
+        "p95Ms": 112.5,
+        "maxMs": 112.5,
         "sourceCounts": {
           "realtime-push": 5
         },
@@ -382,10 +382,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 108.3,
-        "p50Ms": 108,
-        "p95Ms": 109.2,
-        "maxMs": 109.2,
+        "averageMs": 255.2,
+        "p50Ms": 254.9,
+        "p95Ms": 258.1,
+        "maxMs": 258.1,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -397,10 +397,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 131.1,
-        "p50Ms": 131.7,
-        "p95Ms": 131.8,
-        "maxMs": 131.8,
+        "averageMs": 148.5,
+        "p50Ms": 147.3,
+        "p95Ms": 152.5,
+        "maxMs": 152.5,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -412,10 +412,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 106.8,
-        "p50Ms": 106.8,
-        "p95Ms": 108.1,
-        "maxMs": 108.1,
+        "averageMs": 132.7,
+        "p50Ms": 126.2,
+        "p95Ms": 163.2,
+        "maxMs": 163.2,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -427,10 +427,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 94.5,
-        "p50Ms": 94.7,
-        "p95Ms": 95.3,
-        "maxMs": 95.3,
+        "averageMs": 118,
+        "p50Ms": 117.1,
+        "p95Ms": 120.5,
+        "maxMs": 120.5,
         "sourceCounts": {
           "realtime-push": 5
         },
@@ -445,10 +445,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 116.6,
-        "p50Ms": 116.9,
-        "p95Ms": 117.2,
-        "maxMs": 117.2,
+        "averageMs": 130.5,
+        "p50Ms": 131.5,
+        "p95Ms": 134.1,
+        "maxMs": 134.1,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -460,10 +460,10 @@
         "delivered": 5,
         "missed": 0,
         "count": 5,
-        "averageMs": 109.9,
-        "p50Ms": 109.5,
-        "p95Ms": 111.8,
-        "maxMs": 111.8,
+        "averageMs": 110.4,
+        "p50Ms": 109.8,
+        "p95Ms": 115.1,
+        "maxMs": 115.1,
         "sourceCounts": {
           "realtime-push": 5
         }
@@ -485,33 +485,33 @@
       {
         "roundIndex": 0,
         "clients": 1,
-        "accepted": 1,
-        "answersClosed": 0,
+        "accepted": 0,
+        "answersClosed": 1,
         "unexpected": 0,
-        "lockTransitionLatencyMs": 203.3
+        "lockTransitionLatencyMs": 277.9
       }
     ],
     "snapshots": {
-      "successful": 34,
+      "successful": 50,
       "failed": 0
     },
     "httpRequests": {
-      "total": 103,
-      "pagesFunctions": 69,
+      "total": 119,
+      "pagesFunctions": 85,
       "supabaseClientHttp": 14,
       "supabaseHostRest": 15,
       "cleanup": 5
     },
     "approximateRealtimeEventVolume": 74,
     "errorsByCategory": {},
-    "durationMs": 27311,
+    "durationMs": 28471,
     "loadGenerator": {
-      "peakRssBytes": 87642112,
-      "peakHeapUsedBytes": 17529176,
+      "peakRssBytes": 87732224,
+      "peakHeapUsedBytes": 17685472,
       "eventLoopDelay": {
         "meanMs": 30.6,
         "p95Ms": 32,
-        "maxMs": 35
+        "maxMs": 37.6
       },
       "cpu": {
         "userMs": 63,
