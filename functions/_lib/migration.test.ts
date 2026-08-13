@@ -28,6 +28,7 @@ const scoringBroadcastFix = readFileSync(new URL('../../supabase/migrations/2026
 const legacyScoringAliasFix = readFileSync(new URL('../../supabase/migrations/202608110019_legacy_scoring_alias_fix.sql',import.meta.url),'utf8');
 const atomicParticipantSnapshot = readFileSync(new URL('../../supabase/migrations/202608110020_atomic_participant_snapshot.sql',import.meta.url),'utf8');
 const scoringWritePathIndex = readFileSync(new URL('../../supabase/migrations/202608110021_scoring_write_path_index.sql',import.meta.url),'utf8');
+const materializedLeaderboardRank = readFileSync(new URL('../../supabase/migrations/202608110022_materialized_leaderboard_rank.sql',import.meta.url),'utf8');
 const applyScript=readFileSync(new URL('../../scripts/apply-supabase.mjs',import.meta.url),'utf8');
 
 describe('authoritative migration regression guards', () => {
@@ -87,6 +88,14 @@ describe('authoritative migration regression guards', () => {
     expect(scoringWritePathIndex).toContain('drop index if exists public.players_room_leaderboard_idx');
     expect(migration).toContain('create index players_room_id_idx on public.players(room_id)');
     expect(applyScript).toContain("['202608110021', '../supabase/migrations/202608110021_scoring_write_path_index.sql']");
+  });
+
+  it('materializes rank once per leaderboard transition for O(1) personal hydration',()=>{
+    expect(materializedLeaderboardRank).toContain('add column if not exists leaderboard_rank');
+    expect(materializedLeaderboardRank).toContain('update public.players p set leaderboard_rank=o.rank');
+    expect(materializedLeaderboardRank).toContain('personal_rank:=p.leaderboard_rank');
+    expect(materializedLeaderboardRank.indexOf('personal_rank:=p.leaderboard_rank')).toBeLessThan(materializedLeaderboardRank.indexOf('if personal_rank is null then'));
+    expect(applyScript).toContain("['202608110022', '../supabase/migrations/202608110022_materialized_leaderboard_rank.sql']");
   });
 
   it('requires a final leaderboard before completion and retains phase-only broadcasts',()=>{
